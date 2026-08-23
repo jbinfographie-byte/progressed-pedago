@@ -9,9 +9,10 @@ export async function POST(request:Request){
     if(!validEmail(email)||!password)return Response.json({error:"E-mail ou mot de passe incorrect."},{status:401});
     const [trainer]=await getDb().select().from(trainers).where(eq(trainers.email,email)).limit(1);
     if(!trainer){await recordAuthEvent(email,"login_failed","Compte inconnu");return Response.json({error:"E-mail ou mot de passe incorrect."},{status:401})}
+    if(!trainer.emailVerified)return Response.json({error:"Votre adresse e-mail doit encore être validée.",verificationRequired:true,email},{status:403});
     if(trainer.status!=="active")return Response.json({error:"Ce compte est désactivé. Contactez l’administrateur."},{status:403});
     if(trainer.lockedUntil&&new Date(trainer.lockedUntil)>new Date())return Response.json({error:"Compte temporairement verrouillé après plusieurs essais. Réessayez plus tard."},{status:423});
-    const iterations=trainer.passwordVersion===1?120000:210000;
+    const iterations=trainer.passwordVersion===1?120000:trainer.passwordVersion===2?210000:100000;
     if(!safeEqual(await hashCode(password,trainer.codeSalt,iterations),trainer.codeHash)){
       const attempts=trainer.failedAttempts+1;const lockedUntil=attempts>=5?new Date(Date.now()+15*60*1000).toISOString():null;
       await getDb().update(trainers).set({failedAttempts:attempts>=5?0:attempts,lockedUntil}).where(eq(trainers.id,trainer.id));

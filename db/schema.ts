@@ -41,6 +41,9 @@ export const trainers = sqliteTable("trainers", {
   lastLoginAt: text("last_login_at"),
   passwordVersion: integer("password_version").notNull().default(2),
   mustChangePassword: integer("must_change_password",{mode:"boolean"}).notNull().default(false),
+  emailVerified: integer("email_verified",{mode:"boolean"}).notNull().default(false),
+  verificationHash: text("verification_hash"),
+  verificationExpiresAt: text("verification_expires_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 

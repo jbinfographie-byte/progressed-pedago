@@ -11,17 +11,17 @@ function cookieValue(request:Request,name:string){
   const pair=(request.headers.get("cookie")||"").split(";").map(v=>v.trim()).find(v=>v.startsWith(`${name}=`));
   return pair?decodeURIComponent(pair.slice(name.length+1)):null;
 }
-async function sha256(value:string){return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256",encoder.encode(value))))}
+export async function sha256(value:string){return bytesToHex(new Uint8Array(await crypto.subtle.digest("SHA-256",encoder.encode(value))))}
 
 export function normalizeEmail(value:unknown){return String(value||"").trim().toLowerCase()}
 export function validEmail(email:string){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)}
-export function validPassword(password:string){return password.length>=12&&password.length<=128}
+export function validPassword(password:string){return password.length>=12&&password.length<=128&&/[A-ZÀ-ÖØ-Þ]/.test(password)&&/\d/.test(password)}
 export function passwordGuidance(password:string){
   let score=0;if(password.length>=12)score++;if(password.length>=16)score++;if(/[a-z]/.test(password)&&/[A-Z]/.test(password))score++;if(/\d/.test(password))score++;if(/[^A-Za-z0-9]/.test(password))score++;
   return Math.min(4,score);
 }
 export function makeSalt(){const bytes=crypto.getRandomValues(new Uint8Array(16));return bytesToHex(bytes)}
-export async function hashCode(code:string,salt:string,iterations=210000){
+export async function hashCode(code:string,salt:string,iterations=100000){
   const key=await crypto.subtle.importKey("raw",encoder.encode(code),"PBKDF2",false,["deriveBits"]);
   const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:hexToBytes(salt),iterations},key,256);
   return bytesToHex(new Uint8Array(bits));
