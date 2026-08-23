@@ -7,6 +7,7 @@ type Quality={ score?:number; factualConsistency?:boolean; noAmbiguity?:boolean;
 type Question={ question:string; options:string[]; correct:number; explanation:string; objective?:string; difficulty?:string; sourceIndexes?:number[] };
 type Activity={ id:number; title:string; type:string; theme:string; duration:number; questions:Question[]; color:string; source?:string; externalUrl?:string|null; sources?:Source[]; quality?:Quality; introduction?:string; coverImageUrl?:string|null; imageKey?:string|null; imageAlt?:string|null };
 type Result={ id:number; learnerName:string; activityTitle:string; activityType:string; score:number; maxScore:number; durationSeconds:number; completedAt:string };
+type Trainer={ email:string };
 type View="home"|"activities"|"results"|"connections";
 
 const formats=[
@@ -39,7 +40,7 @@ const apps=[
   {name:"Lien externe",mark:"↗",color:"#174d43",text:"Ajouter n’importe quelle ressource par son adresse"},
 ];
 
-type IconName="home"|"book"|"game"|"chart"|"plus"|"search"|"bell"|"dots"|"play"|"spark"|"plug"|"download"|"users"|"wand"|"expand"|"upload";
+type IconName="home"|"book"|"game"|"chart"|"plus"|"search"|"bell"|"dots"|"play"|"spark"|"plug"|"download"|"users"|"wand"|"expand"|"upload"|"lock"|"logout";
 function Icon({name,size=20}:{name:IconName;size?:number}){
   const p:Record<IconName,React.ReactNode>={
     home:<><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></>,
@@ -54,7 +55,9 @@ function Icon({name,size=20}:{name:IconName;size?:number}){
     users:<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
     wand:<><path d="m15 4 5 5L8 21H3v-5Z"/><path d="m6 15 5 5M6 3v4M4 5h4M19 14v4M17 16h4"/></>,
     expand:<><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></>,
-    upload:<><path d="M12 16V4m0 0L7 9m5-5 5 5M4 20h16"/></>
+    upload:<><path d="M12 16V4m0 0L7 9m5-5 5 5M4 20h16"/></>,
+    lock:<><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></>,
+    logout:<><path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-5"/></>
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{p[name]}</svg>
 }
@@ -74,11 +77,14 @@ export default function Home(){
   const [generating,setGenerating]=useState(false);
   const [generationStatus,setGenerationStatus]=useState("");
   const [toast,setToast]=useState("");
+  const [trainer,setTrainer]=useState<Trainer|null>(null);
+  const [authLoading,setAuthLoading]=useState(true);
 
-  useEffect(()=>{ Promise.all([
+  useEffect(()=>{fetch("/api/auth/session").then(async response=>{const data=await response.json();setTrainer(response.ok?data.trainer:null)}).catch(()=>setTrainer(null)).finally(()=>setAuthLoading(false))},[]);
+  useEffect(()=>{if(!trainer)return; Promise.all([
     fetch("/api/activities").then(r=>r.json()).catch(()=>({activities:[]})),
     fetch("/api/results").then(r=>r.json()).catch(()=>({results:[]}))
-  ]).then(([a,r])=>{ if(a.activities?.length)setActivities([...a.activities.map((x:Activity,i:number)=>({...x,color:formats[i%formats.length].color})),...starters]); setResults(r.results||[]) }) },[]);
+  ]).then(([a,r])=>{ if(a.activities?.length)setActivities([...a.activities.map((x:Activity,i:number)=>({...x,color:formats[i%formats.length].color})),...starters]); setResults(r.results||[]) }) },[trainer]);
 
   const filtered=useMemo(()=>activities.filter(a=>a.title.toLowerCase().includes(query.toLowerCase())||a.theme.toLowerCase().includes(query.toLowerCase())),[activities,query]);
   const average=results.length?Math.round(results.reduce((n,r)=>n+(r.score/r.maxScore)*100,0)/results.length):0;
@@ -134,6 +140,13 @@ export default function Home(){
     e.preventDefault();const d=new FormData(e.currentTarget);await persistActivity({title:String(d.get("title")),type:"Ressource intégrée",theme:String(d.get("app")),duration:10,questions:sampleQuestions,source:"external",externalUrl:String(d.get("url"))});setCreator(null);notify("Ressource externe ajoutée");
   }
 
+  async function logout(){await fetch("/api/auth/logout",{method:"POST"});setTrainer(null);setActivities(starters);setResults([]);setView("home")}
+
+  if(authLoading)return <div className="auth-loading"><span className="brand-mark">P</span><div className="loader dark"/><p>Ouverture de votre espace sécurisé…</p></div>;
+  if(!trainer)return <LoginScreen onAuthenticated={setTrainer}/>;
+  const trainerName=trainer.email.split("@")[0].replace(/[._-]+/g," ");
+  const initials=trainerName.split(" ").map(part=>part[0]).join("").slice(0,2).toUpperCase();
+
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">P</span><span>Progressed<br/><b>Pédago</b></span></div>
@@ -144,7 +157,7 @@ export default function Home(){
         <button onClick={()=>setView("connections")} className={`nav-item ${view==="connections"?"active":""}`}><Icon name="plug"/>Connexions</button>
       </nav>
       <div className="side-card"><Icon name="spark" size={24}/><strong>Assistant pédagogique IA</strong><p>Décrivez une idée : l’assistant prépare le jeu, les réponses et les corrections.</p><button onClick={()=>setCreator("ai")}>Créer avec l’IA</button></div>
-      <div className="profile"><span className="avatar">JM</span><div><strong>Jacky M.</strong><small>Formateur consultant</small></div><Icon name="dots"/></div>
+      <div className="profile"><span className="avatar">{initials||"F"}</span><div><strong>{trainerName}</strong><small>{trainer.email}</small></div><button onClick={logout} title="Se déconnecter" aria-label="Se déconnecter"><Icon name="logout" size={18}/></button></div>
     </aside>
     <main>
       <header className="topbar"><div><p className="eyebrow">ESPACE FORMATEUR</p><h1>{view==="home"?"Bonjour Jacky, prêt à transmettre ?":view==="activities"?"Ma fabrique d’activités":view==="results"?"Résultats des apprenants":"Applications connectées"}</h1></div><div className="top-actions">{(view==="home"||view==="activities")&&<label className="search"><Icon name="search" size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Rechercher…"/></label>}<button className="icon-button" aria-label="Notifications"><Icon name="bell"/></button><button className="primary" onClick={()=>setCreator("choice")}><Icon name="plus" size={18}/>Créer une activité</button></div></header>
@@ -175,6 +188,20 @@ export default function Home(){
     {playing&&<Player activity={playing} step={step} selected={selected} setSelected={setSelected} finish={finish} score={score} next={nextQuestion} close={()=>setPlaying(null)} save={saveResult} saved={saved}/>}
     {toast&&<div className="toast"><span>✓</span>{toast}</div>}
   </div>
+}
+
+function LoginScreen({onAuthenticated}:{onAuthenticated:(trainer:Trainer)=>void}){
+  const [mode,setMode]=useState<"login"|"register">("login");
+  const [loading,setLoading]=useState(false);const [error,setError]=useState("");
+  async function submit(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();setLoading(true);setError("");const data=new FormData(e.currentTarget);
+    try{const response=await fetch(`/api/auth/${mode==="login"?"login":"register"}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:data.get("email"),code:data.get("code")})});const body=await response.json();if(!response.ok)throw new Error(body.error||"Accès refusé.");onAuthenticated(body.trainer)}catch(reason){setError(reason instanceof Error?reason.message:"Accès refusé.")}finally{setLoading(false)}
+  }
+  return <main className="login-page">
+    <section className="login-story"><div className="login-brand"><span className="brand-mark">P</span><span>Progressed<br/><b>Pédago</b></span></div><span className="secure-pill"><Icon name="lock" size={15}/> ESPACE FORMATEUR SÉCURISÉ</span><h1>Vos activités pédagogiques, dans un espace protégé.</h1><p>Créez vos jeux, utilisez l’intelligence artificielle et retrouvez les résultats de vos apprenants en toute simplicité.</p><div className="login-benefits"><span>✓ Accès personnel</span><span>✓ Code protégé</span><span>✓ Session sécurisée</span></div></section>
+    <section className="login-panel"><div className="login-card"><div className="login-icon"><Icon name="lock" size={25}/></div><span className="kicker">{mode==="login"?"BON RETOUR":"PREMIER ACCÈS"}</span><h2>{mode==="login"?"Ouvrir mon espace":"Créer mon accès formateur"}</h2><p>{mode==="login"?"Saisissez votre e-mail et votre code personnel.":"Choisissez votre adresse e-mail et un code personnel à 6 chiffres."}</p><form onSubmit={submit}><label>Adresse e-mail<input type="email" name="email" autoComplete="email" placeholder="formateur@exemple.fr" required/></label><label>Code personnel<input type="password" name="code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} autoComplete={mode==="login"?"current-password":"new-password"} placeholder="••••••" required/><small>6 chiffres exactement</small></label>{error&&<div className="auth-error">{error}</div>}<button className="auth-submit" disabled={loading}>{loading?<><span className="loader"/>Vérification…</>:mode==="login"?<>Accéder à mon espace <span>→</span></>:<>Créer mon accès <span>→</span></>}</button></form><div className="auth-switch"><span>{mode==="login"?"Première visite ?":"Vous avez déjà un accès ?"}</span><button onClick={()=>{setMode(mode==="login"?"register":"login");setError("")}}>{mode==="login"?"Créer un accès formateur":"Me connecter"}</button></div><small className="privacy-note"><Icon name="lock" size={12}/> Votre code est protégé et n’est jamais affiché.</small></div>
+    </section>
+  </main>
 }
 
 function ActivityLibrary({activities,start,onCreate}:{activities:Activity[];start:(a:Activity)=>void;onCreate:()=>void}){

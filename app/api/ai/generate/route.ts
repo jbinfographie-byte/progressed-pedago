@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import { requireTrainer } from "@/app/auth";
 
 type Source={ title:string; url:string; publisher:string };
 type Question={ question:string; options:string[]; correct:number; explanation:string; objective:string; difficulty:string; sourceIndexes:number[] };
@@ -39,6 +40,7 @@ function cleanActivity(raw:Generated,count:number):Generated {
 }
 
 export async function POST(request:Request) {
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   const body=await request.json() as {theme?:string;objective?:string;audience?:string;prompt?:string;type?:string;count?:number;level?:string;research?:boolean};
   const theme=String(body.theme||"").trim();
   const type=String(body.type||"Quiz interactif");

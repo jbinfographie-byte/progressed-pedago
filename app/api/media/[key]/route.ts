@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
+import { requireTrainer } from "@/app/auth";
 
 export async function GET(request:Request){
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try{
     const key=decodeURIComponent(new URL(request.url).pathname.split("/api/media/")[1]||"");
     if(!key||!key.startsWith("activity-images/"))return new Response("Image introuvable",{status:404});

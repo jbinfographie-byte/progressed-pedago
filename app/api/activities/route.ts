@@ -1,8 +1,10 @@
 import { desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { activities } from "@/db/schema";
+import { requireTrainer } from "@/app/auth";
 
-export async function GET() {
+export async function GET(request:Request) {
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try {
     const rows = await getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(100);
     return Response.json({ activities:rows.map(row=>({
@@ -18,6 +20,7 @@ export async function GET() {
 }
 
 export async function POST(request:Request) {
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try {
     const body = await request.json() as Record<string,unknown>;
     const title = String(body.title||"").trim();

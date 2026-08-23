@@ -1,9 +1,11 @@
 import { env } from "cloudflare:workers";
+import { requireTrainer } from "@/app/auth";
 
 const allowed=new Set(["image/png","image/jpeg"]);
 const maxBytes=5*1024*1024;
 
 export async function POST(request:Request){
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try{
     const form=await request.formData();
     const file=form.get("image");

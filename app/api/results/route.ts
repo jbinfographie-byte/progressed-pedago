@@ -1,8 +1,10 @@
 import { desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { results } from "@/db/schema";
+import { requireTrainer } from "@/app/auth";
 
-export async function GET() {
+export async function GET(request:Request) {
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try {
     const rows = await getDb().select().from(results).orderBy(desc(results.completedAt)).limit(500);
     return Response.json({ results:rows });
@@ -12,6 +14,7 @@ export async function GET() {
 }
 
 export async function POST(request:Request) {
+  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try {
     const body = await request.json() as Record<string,unknown>;
     const learnerName = String(body.learnerName||"").trim();
