@@ -34,6 +34,13 @@ export const trainers = sqliteTable("trainers", {
   email: text("email").notNull().unique(),
   codeHash: text("code_hash").notNull(),
   codeSalt: text("code_salt").notNull(),
+  role: text("role").notNull().default("trainer"),
+  status: text("status").notNull().default("active"),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: text("locked_until"),
+  lastLoginAt: text("last_login_at"),
+  passwordVersion: integer("password_version").notNull().default(2),
+  mustChangePassword: integer("must_change_password",{mode:"boolean"}).notNull().default(false),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -42,4 +49,18 @@ export const trainerSessions = sqliteTable("trainer_sessions", {
   trainerId: integer("trainer_id").notNull(),
   expiresAt: text("expires_at").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const authEvents = sqliteTable("auth_events", {
+  id: integer("id").primaryKey({ autoIncrement:true }),
+  email: text("email").notNull(),
+  event: text("event").notNull(),
+  detail: text("detail"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const appSettings = sqliteTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
