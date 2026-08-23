@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { requireTrainer } from "@/app/auth";
 
 type Source={title:string;url:string;publisher:string};
-type Lesson={title:string;summary:string;keyPoints:string[];steps:string[];learnerTip:string;sources:Source[]};
+type Lesson={title:string;summary:string;keyPoints:string[];steps:string[];learnerTip:string;hook:string;miniChallenge:string;memoryAid:string;sources:Source[]};
 
 function fallback(title:string,theme:string):Lesson {
   return {
@@ -11,6 +11,9 @@ function fallback(title:string,theme:string):Lesson {
     keyPoints:["Lire l’objectif et la consigne avant de commencer","Repérer les informations importantes","Comparer sa réponse avec l’explication proposée"],
     steps:["Observer la situation ou la question","Choisir une réponse en s’appuyant sur le cours","Lire la correction puis recommencer si nécessaire"],
     learnerTip:"Prenez le temps de comprendre l’explication : l’objectif n’est pas seulement de trouver la bonne réponse, mais de savoir la justifier.",
+    hook:`Avant de commencer, quelle règle vous semble la plus importante sur le thème « ${theme} » ?`,
+    miniChallenge:"Expliquez en une phrase une bonne pratique à retenir avant de lancer l’activité.",
+    memoryAid:"Je découvre → Je réfléchis → Je réponds → Je comprends",
     sources:[],
   };
 }
@@ -22,14 +25,14 @@ export async function POST(request:Request){
   const secrets=env as unknown as {OPENAI_API_KEY?:string;OPENAI_MODEL?:string};
   if(!secrets.OPENAI_API_KEY)return Response.json({lesson:fallback(title,theme),mode:"demo",notice:"Cours de démonstration créé. Configurez OpenAI pour une génération documentée."});
   const schema={type:"object",additionalProperties:false,properties:{
-    title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"},
+    title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"},hook:{type:"string"},miniChallenge:{type:"string"},memoryAid:{type:"string"},
     sources:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},url:{type:"string"},publisher:{type:"string"}},required:["title","url","publisher"]}},
-  },required:["title","summary","keyPoints","steps","learnerTip","sources"]};
+  },required:["title","summary","keyPoints","steps","learnerTip","hook","miniChallenge","memoryAid","sources"]};
   const questions=(body.questions||[]).slice(0,10).map((question,index)=>`${index+1}. ${question.question||""}\nRéponse attendue : ${question.answer||""}\nExplication existante : ${question.explanation||""}`).join("\n\n");
   try{
     const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":`Bearer ${secrets.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({
       model:secrets.OPENAI_MODEL||"gpt-5.6",store:false,reasoning:{effort:"medium"},tools:[{type:"web_search"}],tool_choice:"required",include:["web_search_call.action.sources"],
-      instructions:"Tu es ingénieur pédagogique pour adultes et documentaliste. Recherche des sources primaires ou institutionnelles fiables, puis rédige un mini-cours en français simple qui prépare réellement l’apprenant à l’activité. Le résumé doit expliquer les notions, les points essentiels doivent être concrets, les étapes doivent former une méthode applicable et le conseil doit favoriser l’autonomie. N’invente aucune règle métier. Vérifie la cohérence avec chaque question et chaque bonne réponse.",
+      instructions:"Tu es ingénieur pédagogique pour adultes et documentaliste. Recherche des sources primaires ou institutionnelles fiables, puis rédige un mini-cours en français simple qui prépare réellement l’apprenant à l’activité. Le résumé doit expliquer les notions, les points essentiels doivent être concrets, les étapes doivent former une méthode applicable et le conseil doit favoriser l’autonomie. Ajoute une question d’accroche, un défi de moins d’une minute et une astuce mémo. Le ton doit être ludique sans infantiliser. N’invente aucune règle métier. Vérifie la cohérence avec chaque question et chaque bonne réponse.",
       input:`TITRE : ${title}\nTHÈME : ${theme}\nFORMAT : ${body.type||"Activité pédagogique"}\nINTRODUCTION : ${body.introduction||"Aucune"}\n\nQUESTIONS ET CORRECTIONS :\n${questions}\n\nGénère un cours préparatoire clair, structuré et directement compréhensible par un adulte en formation.`,
       text:{format:{type:"json_schema",name:"pedagogical_lesson",strict:true,schema}},
     })});

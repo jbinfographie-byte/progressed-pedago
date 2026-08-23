@@ -3,7 +3,7 @@ import { requireTrainer } from "@/app/auth";
 
 type Source={ title:string; url:string; publisher:string };
 type Question={ question:string; options:string[]; correct:number; explanation:string; objective:string; difficulty:string; sourceIndexes:number[] };
-type Lesson={ title:string; summary:string; keyPoints:string[]; steps:string[]; learnerTip:string };
+type Lesson={ title:string; summary:string; keyPoints:string[]; steps:string[]; learnerTip:string; hook:string; miniChallenge:string; memoryAid:string };
 type Generated={ title:string; type:string; theme:string; duration:number; introduction:string; lesson:Lesson; questions:Question[]; sources:Source[]; quality:{ score:number; factualConsistency:boolean; noAmbiguity:boolean; levelFit:boolean; cleanFrench:boolean; duplicateFree:boolean; reviewSummary:string } };
 
 function fallback(theme:string,type:string,count:number):Generated {
@@ -13,7 +13,7 @@ function fallback(theme:string,type:string,count:number):Generated {
     {question:`Comment vérifier qu’une consigne liée à « ${topic} » est comprise ?`,options:["La faire reformuler ou démontrer","La répéter plus fort","Supprimer l’étape pratique"],correct:0,explanation:"La reformulation ou la démonstration permet de contrôler la compréhension.",objective:"Contrôler la compréhension",difficulty:"Débutant",sourceIndexes:[]},
     {question:"Quelle méthode permet de progresser après une erreur ?",options:["Analyser, corriger puis recommencer","Masquer l’erreur","Arrêter définitivement l’activité"],correct:0,explanation:"Une correction suivie d’un nouvel essai transforme l’erreur en apprentissage.",objective:"Adopter une démarche de correction",difficulty:"Intermédiaire",sourceIndexes:[]},
   ];
-  return {title:`Quiz : ${topic.slice(0,52)}`,type,theme:topic,duration:Math.max(8,count*2),introduction:"Répondez aux questions puis consultez les explications.",lesson:{title:`Comprendre ${topic}`,summary:`Ce cours présente les notions essentielles à connaître avant de réaliser l’activité sur ${topic}.`,keyPoints:["Observer la situation avant d’agir","Consulter les consignes applicables","Vérifier sa compréhension avant la mise en pratique"],steps:["Identifier l’objectif de l’activité","Repérer les informations importantes","Appliquer la méthode puis contrôler le résultat"],learnerTip:"Prenez le temps de relire la consigne et appuyez-vous sur les explications après chaque réponse."},questions:Array.from({length:count},(_,i)=>({...base[i%base.length],question:i<3?base[i].question:`${base[i%3].question} — situation ${i+1}`})),sources:[],quality:{score:70,factualConsistency:true,noAmbiguity:true,levelFit:true,cleanFrench:true,duplicateFree:true,reviewSummary:"Brouillon pédagogique sans recherche web : les informations métier doivent être validées avant diffusion."}};
+  return {title:`Quiz : ${topic.slice(0,52)}`,type,theme:topic,duration:Math.max(8,count*2),introduction:"Répondez aux questions puis consultez les explications.",lesson:{title:`Comprendre ${topic}`,summary:`Ce cours présente les notions essentielles à connaître avant de réaliser l’activité sur ${topic}.`,keyPoints:["Observer la situation avant d’agir","Consulter les consignes applicables","Vérifier sa compréhension avant la mise en pratique"],steps:["Identifier l’objectif de l’activité","Repérer les informations importantes","Appliquer la méthode puis contrôler le résultat"],learnerTip:"Prenez le temps de relire la consigne et appuyez-vous sur les explications après chaque réponse.",hook:`À votre avis, quel est le point le plus important à vérifier avant d’agir sur ${topic} ?`,miniChallenge:"En 30 secondes, citez une règle essentielle et expliquez pourquoi elle est utile.",memoryAid:"Observer → Comprendre → Agir → Contrôler"},questions:Array.from({length:count},(_,i)=>({...base[i%base.length],question:i<3?base[i].question:`${base[i%3].question} — situation ${i+1}`})),sources:[],quality:{score:70,factualConsistency:true,noAmbiguity:true,levelFit:true,cleanFrench:true,duplicateFree:true,reviewSummary:"Brouillon pédagogique sans recherche web : les informations métier doivent être validées avant diffusion."}};
 }
 
 function cleanActivity(raw:Generated,count:number):Generated {
@@ -42,7 +42,7 @@ function cleanActivity(raw:Generated,count:number):Generated {
 
 export async function POST(request:Request) {
   const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
-  const body=await request.json() as {theme?:string;objective?:string;audience?:string;prompt?:string;type?:string;count?:number;level?:string;research?:boolean};
+  const body=await request.json() as {theme?:string;objective?:string;audience?:string;prompt?:string;type?:string;count?:number;level?:string;research?:boolean;lessonStyle?:string;lessonLength?:string;lessonPrompt?:string};
   const theme=String(body.theme||"").trim();
   const type=String(body.type||"Quiz interactif");
   const count=Math.min(10,Math.max(3,Number(body.count||5)));
@@ -52,7 +52,7 @@ export async function POST(request:Request) {
 
   const schema={type:"object",additionalProperties:false,properties:{
     title:{type:"string"},type:{type:"string"},theme:{type:"string"},duration:{type:"integer"},introduction:{type:"string"},
-    lesson:{type:"object",additionalProperties:false,properties:{title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"}},required:["title","summary","keyPoints","steps","learnerTip"]},
+    lesson:{type:"object",additionalProperties:false,properties:{title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"},hook:{type:"string"},miniChallenge:{type:"string"},memoryAid:{type:"string"}},required:["title","summary","keyPoints","steps","learnerTip","hook","miniChallenge","memoryAid"]},
     questions:{type:"array",items:{type:"object",additionalProperties:false,properties:{
       question:{type:"string"},options:{type:"array",items:{type:"string"}},correct:{type:"integer"},explanation:{type:"string"},objective:{type:"string"},difficulty:{type:"string"},sourceIndexes:{type:"array",items:{type:"integer"}}
     },required:["question","options","correct","explanation","objective","difficulty","sourceIndexes"]}},
@@ -73,8 +73,9 @@ MÉTHODE OBLIGATOIRE :
 7. Proposer des distracteurs plausibles mais incontestablement faux.
 8. Adapter le français et la difficulté au public indiqué.
 9. Vérifier : exactitude, doublons, orthographe, cohérence entre question/réponse/explication, validité de l’index correct.
-10. Créer avant l’activité un mini-cours structuré : résumé clair, 3 à 6 points essentiels, étapes de méthode et conseil pratique.
-11. Associer chaque question aux index des sources utilisées, puis effectuer une relecture finale et attribuer un score qualité réaliste.
+10. Créer avant l’activité un mini-cours structuré : accroche sous forme de question, résumé clair, 3 à 6 points essentiels, étapes de méthode, conseil pratique, défi rapide et astuce mémo.
+11. Rendre le parcours ludique sans infantiliser les adultes : découverte, défi, activité puis correction expliquée.
+12. Associer chaque question aux index des sources utilisées, puis effectuer une relecture finale et attribuer un score qualité réaliste.
 
 Si les sources disponibles sont insuffisantes, réduis la portée des questions au lieu d’inventer. Chaque explication doit justifier la bonne réponse en français simple.`;
 
@@ -94,6 +95,9 @@ NIVEAU : ${body.level||"Intermédiaire"}
 FORMAT : ${type}
 NOMBRE EXACT DE QUESTIONS : ${count}
 PRÉCISIONS DU FORMATEUR : ${body.prompt||"Aucune"}
+STYLE DU COURS : ${body.lessonStyle||"Ludique avec défi"}
+LONGUEUR DU COURS : ${body.lessonLength||"Standard (5 à 8 min)"}
+CONSIGNE POUR LES EXPLICATIONS : ${body.lessonPrompt||"Explications simples, exemple concret et défi court"}
 
 Construis le mini-cours et le quiz uniquement après la recherche. Le cours doit préparer l’apprenant à réussir l’activité et les sources doivent être directement liées aux explications.`,
       text:{format:{type:"json_schema",name:"researched_pedagogical_activity",strict:true,schema}}
