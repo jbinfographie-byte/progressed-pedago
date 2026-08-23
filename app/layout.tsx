@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata:Metadata = {
+  metadataBase:new URL("https://progressed-pedago.boisfer-jacky.chatgpt.site"),
   title:"Progressed Pédago",
   description:"L’espace des formateurs pour créer, organiser et animer des activités pédagogiques.",
   icons:{ icon:"/favicon.svg", shortcut:"/favicon.svg" },
