@@ -15,6 +15,13 @@
       "when": 1787503908746,
       "tag": "0001_equal_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787504671520,
+      "tag": "0002_hesitant_boomerang",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type Source={ title:string; url:string; publisher:string };
 type Quality={ score?:number; factualConsistency?:boolean; noAmbiguity?:boolean; levelFit?:boolean; cleanFrench?:boolean; duplicateFree?:boolean; reviewSummary?:string };
 type Question={ question:string; options:string[]; correct:number; explanation:string; objective?:string; difficulty?:string; sourceIndexes?:number[] };
-type Activity={ id:number; title:string; type:string; theme:string; duration:number; questions:Question[]; color:string; source?:string; externalUrl?:string|null; sources?:Source[]; quality?:Quality; introduction?:string };
+type Activity={ id:number; title:string; type:string; theme:string; duration:number; questions:Question[]; color:string; source?:string; externalUrl?:string|null; sources?:Source[]; quality?:Quality; introduction?:string; coverImageUrl?:string|null; imageKey?:string|null; imageAlt?:string|null };
 type Result={ id:number; learnerName:string; activityTitle:string; activityType:string; score:number; maxScore:number; durationSeconds:number; completedAt:string };
 type View="home"|"activities"|"results"|"connections";
 
@@ -39,7 +39,7 @@ const apps=[
   {name:"Lien externe",mark:"↗",color:"#174d43",text:"Ajouter n’importe quelle ressource par son adresse"},
 ];
 
-type IconName="home"|"book"|"game"|"chart"|"plus"|"search"|"bell"|"dots"|"play"|"spark"|"plug"|"download"|"users"|"wand";
+type IconName="home"|"book"|"game"|"chart"|"plus"|"search"|"bell"|"dots"|"play"|"spark"|"plug"|"download"|"users"|"wand"|"expand"|"upload";
 function Icon({name,size=20}:{name:IconName;size?:number}){
   const p:Record<IconName,React.ReactNode>={
     home:<><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></>,
@@ -52,7 +52,9 @@ function Icon({name,size=20}:{name:IconName;size?:number}){
     play:<path d="m9 6 9 6-9 6Z" fill="currentColor"/>,spark:<><path d="m12 3 1.2 4.2L17 9l-3.8 1.8L12 15l-1.2-4.2L7 9l3.8-1.8Z"/><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7Z"/></>,
     plug:<><path d="m12 22 4-4-3-3 3-3 3 3 3-4M8 2 4 6l3 3-3 3-3-3-1 1"/></>,download:<><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16"/></>,
     users:<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
-    wand:<><path d="m15 4 5 5L8 21H3v-5Z"/><path d="m6 15 5 5M6 3v4M4 5h4M19 14v4M17 16h4"/></>
+    wand:<><path d="m15 4 5 5L8 21H3v-5Z"/><path d="m6 15 5 5M6 3v4M4 5h4M19 14v4M17 16h4"/></>,
+    expand:<><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></>,
+    upload:<><path d="M12 16V4m0 0L7 9m5-5 5 5M4 20h16"/></>
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{p[name]}</svg>
 }
@@ -83,13 +85,29 @@ export default function Home(){
   const score=answers.reduce((n,a,i)=>n+(a===(playing?.questions[i]?.correct??-1)?1:0),0)+(selected===(playing?.questions[step]?.correct??-2)&&finish?1:0);
 
   function notify(text:string){setToast(text);setTimeout(()=>setToast(""),2600)}
+  async function uploadImage(value:FormDataEntryValue|null){
+    if(!(value instanceof File)||!value.size)return {};
+    const form=new FormData();form.append("image",value);
+    const response=await fetch("/api/uploads",{method:"POST",body:form});const data=await response.json();
+    if(!response.ok)throw new Error(data.error||"Impossible d’ajouter l’image.");
+    return {imageKey:data.key,imageAlt:value.name,coverImageUrl:data.url};
+  }
   async function persistActivity(activity:Omit<Activity,"id"|"color">){
     const response=await fetch("/api/activities",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(activity)});
     const data=await response.json();
     const created:Activity={...(data.activity||activity),id:data.activity?.id||Date.now(),color:formats.find(f=>f.name===activity.type)?.color||"mint"};
     setActivities(current=>[created,...current]);return created;
   }
-  function start(activity:Activity){setPlaying(activity);setStep(0);setAnswers([]);setSelected(null);setFinish(false);setSaved(false)}
+  function start(activity:Activity){
+    const base=Math.floor(Math.random()*4);
+    const questions=activity.questions.map((q,index)=>{
+      const correctText=q.options[q.correct];const distractors=q.options.filter((_,i)=>i!==q.correct);
+      for(let i=distractors.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[distractors[i],distractors[j]]=[distractors[j],distractors[i]]}
+      const target=(base+index)%q.options.length;const options=[...distractors];options.splice(target,0,correctText);
+      return {...q,options,correct:target};
+    });
+    setPlaying({...activity,questions});setStep(0);setAnswers([]);setSelected(null);setFinish(false);setSaved(false)
+  }
   function nextQuestion(){if(selected===null)return; if(!playing)return; if(step<playing.questions.length-1){setAnswers(a=>[...a,selected]);setStep(s=>s+1);setSelected(null)}else setFinish(true)}
   async function saveResult(e:FormEvent<HTMLFormElement>){
     e.preventDefault(); if(!playing)return; const name=String(new FormData(e.currentTarget).get("learnerName")||"");
@@ -103,14 +121,14 @@ export default function Home(){
     const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download="resultats-progressed-pedago.csv";a.click();URL.revokeObjectURL(url);
   }
   async function manualCreate(e:FormEvent<HTMLFormElement>){
-    e.preventDefault();const d=new FormData(e.currentTarget);const activity=await persistActivity({title:String(d.get("title")),type:String(d.get("type")),theme:String(d.get("theme")),duration:Number(d.get("duration")),questions:sampleQuestions,source:"manual"});setCreator(null);notify(`« ${activity.title} » ajouté à la bibliothèque`);
+    e.preventDefault();const d=new FormData(e.currentTarget);try{const image=await uploadImage(d.get("image"));const activity=await persistActivity({title:String(d.get("title")),type:String(d.get("type")),theme:String(d.get("theme")),duration:Number(d.get("duration")),questions:sampleQuestions,source:"manual",...image});setCreator(null);notify(`« ${activity.title} » ajouté à la bibliothèque`)}catch(error){notify(error instanceof Error?error.message:"Image non enregistrée")}
   }
   async function aiCreate(e:FormEvent<HTMLFormElement>){
     e.preventDefault();const d=new FormData(e.currentTarget);setGenerating(true);setGenerationStatus("Recherche des meilleures sources…");
     const response=await fetch("/api/ai/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({theme:d.get("theme"),objective:d.get("objective"),audience:d.get("audience"),prompt:d.get("prompt"),type:d.get("type"),count:d.get("count"),level:d.get("level"),research:d.get("research")==="on"})});
     setGenerationStatus("Vérification des questions et des réponses…");
     const data=await response.json();if(!response.ok){setGenerating(false);setGenerationStatus("");notify(data.error||"La génération n’a pas abouti");return}
-    const activity=await persistActivity({...data.activity,source:"ai"});setGenerating(false);setGenerationStatus("");setCreator(null);notify(data.mode==="openai-research"?`Quiz vérifié : ${activity.quality?.score||90}/100`:"Brouillon créé — sources à vérifier");
+    try{const image=await uploadImage(d.get("image"));const activity=await persistActivity({...data.activity,source:"ai",...image});setGenerating(false);setGenerationStatus("");setCreator(null);notify(data.mode==="openai-research"?`Quiz vérifié : ${activity.quality?.score||90}/100`:"Brouillon créé — sources à vérifier")}catch(error){setGenerating(false);setGenerationStatus("");notify(error instanceof Error?error.message:"Image non enregistrée")}
   }
   async function externalCreate(e:FormEvent<HTMLFormElement>){
     e.preventDefault();const d=new FormData(e.currentTarget);await persistActivity({title:String(d.get("title")),type:"Ressource intégrée",theme:String(d.get("app")),duration:10,questions:sampleQuestions,source:"external",externalUrl:String(d.get("url"))});setCreator(null);notify("Ressource externe ajoutée");
@@ -160,19 +178,20 @@ export default function Home(){
 }
 
 function ActivityLibrary({activities,start,onCreate}:{activities:Activity[];start:(a:Activity)=>void;onCreate:()=>void}){
-  return <section className="section-block games-section"><div className="section-heading"><div><span className="kicker">VOTRE BIBLIOTHÈQUE</span><h2>Activités prêtes à animer</h2></div><button className="text-button" onClick={onCreate}>+ Nouvelle activité</button></div><div className="game-grid">{activities.map(a=><article className="game-card" key={`${a.id}-${a.title}`}><div className={`game-cover ${a.color}`}><span className="game-type">{a.source==="ai"?"✦ Créé avec l’IA":a.type}</span>{a.source==="ai"&&<span className={`quality-badge ${(a.quality?.score||0)>=85?"verified":"draft"}`}>{(a.quality?.score||0)>=85?"✓ Vérifié":"À relire"}</span>}<div className="game-symbol">{formats.find(f=>f.name===a.type)?.icon||"▶"}</div><button className="play-button" onClick={()=>start(a)} aria-label={`Jouer à ${a.title}`}><Icon name="play" size={18}/></button></div><div className="game-content"><span>{a.theme}</span><h3>{a.title}</h3>{a.sources?.length?<p className="source-count">{a.sources.length} source{a.sources.length>1?"s":""} consultée{a.sources.length>1?"s":""} • Qualité {a.quality?.score||"—"}/100</p>:null}<div><small>{a.duration} min</small><small>{a.questions.length} étapes</small><button aria-label="Options"><Icon name="dots"/></button></div></div></article>)}</div></section>
+  return <section className="section-block games-section"><div className="section-heading"><div><span className="kicker">VOTRE BIBLIOTHÈQUE</span><h2>Activités prêtes à animer</h2></div><button className="text-button" onClick={onCreate}>+ Nouvelle activité</button></div><div className="game-grid">{activities.map(a=><article className="game-card" key={`${a.id}-${a.title}`}><div className={`game-cover ${a.color} ${a.coverImageUrl?"with-image":""}`}>{a.coverImageUrl&&<img src={a.coverImageUrl} alt={a.imageAlt||`Illustration de ${a.title}`}/>}<span className="game-type">{a.source==="ai"?"✦ Créé avec l’IA":a.type}</span>{a.source==="ai"&&<span className={`quality-badge ${(a.quality?.score||0)>=85?"verified":"draft"}`}>{(a.quality?.score||0)>=85?"✓ Vérifié":"À relire"}</span>}<div className="game-symbol">{!a.coverImageUrl&&(formats.find(f=>f.name===a.type)?.icon||"▶")}</div><button className="play-button" onClick={()=>start(a)} aria-label={`Jouer à ${a.title} en grand écran`}><Icon name="expand" size={17}/></button></div><div className="game-content"><span>{a.theme}</span><h3>{a.title}</h3>{a.sources?.length?<p className="source-count">{a.sources.length} source{a.sources.length>1?"s":""} consultée{a.sources.length>1?"s":""} • Qualité {a.quality?.score||"—"}/100</p>:null}<div><small>{a.duration} min</small><small>{a.questions.length} étapes</small><button aria-label="Options"><Icon name="dots"/></button></div></div></article>)}</div></section>
 }
 
 function Creator({mode,setMode,manualCreate,aiCreate,externalCreate,generating,generationStatus}:{mode:string;setMode:(m:"choice"|"manual"|"ai"|"external"|null)=>void;manualCreate:(e:FormEvent<HTMLFormElement>)=>void;aiCreate:(e:FormEvent<HTMLFormElement>)=>void;externalCreate:(e:FormEvent<HTMLFormElement>)=>void;generating:boolean;generationStatus:string}){
   return <div className="modal-backdrop" onMouseDown={()=>setMode(null)}><section className="modal creator-modal" onMouseDown={e=>e.stopPropagation()} role="dialog" aria-modal="true"><button className="modal-close" onClick={()=>setMode(null)}>×</button>
     {mode==="choice"&&<><span className="modal-icon"><Icon name="plus"/></span><p className="eyebrow">NOUVELLE ACTIVITÉ</p><h2>Comment souhaitez-vous créer ?</h2><p className="modal-intro">Choisissez le point de départ le plus simple pour vous.</p><div className="creation-choices"><button onClick={()=>setMode("ai")}><span><Icon name="wand"/></span><div><strong>Créer avec ChatGPT</strong><small>Décrivez le résultat attendu en langage simple</small></div><b>→</b></button><button onClick={()=>setMode("manual")}><span><Icon name="game"/></span><div><strong>Construire manuellement</strong><small>Choisissez un format puis personnalisez-le</small></div><b>→</b></button><button onClick={()=>setMode("external")}><span><Icon name="plug"/></span><div><strong>Intégrer une application</strong><small>Canva, Genially, YouTube ou autre lien</small></div><b>→</b></button></div></>}
-    {mode==="manual"&&<><button className="back-link" onClick={()=>setMode("choice")}>← Retour</button><span className="modal-icon"><Icon name="game"/></span><p className="eyebrow">CRÉATION MANUELLE</p><h2>Préparer une activité</h2><form onSubmit={manualCreate}><label>Titre<input name="title" required placeholder="Ex. Classer les EPI selon le risque"/></label><div className="form-row"><label>Format<select name="type">{formats.map(f=><option key={f.name}>{f.name}</option>)}</select></label><label>Thématique<select name="theme"><option>Propreté & hygiène</option><option>Sécurité au travail</option><option>Compétences numériques</option><option>Français professionnel</option></select></label></div><label>Durée estimée<input name="duration" type="number" min="3" max="60" defaultValue="10"/></label><div className="modal-actions"><button type="button" onClick={()=>setMode(null)}>Annuler</button><button className="primary">Créer le brouillon →</button></div></form></>}
+    {mode==="manual"&&<><button className="back-link" onClick={()=>setMode("choice")}>← Retour</button><span className="modal-icon"><Icon name="game"/></span><p className="eyebrow">CRÉATION MANUELLE</p><h2>Préparer une activité</h2><form onSubmit={manualCreate}><label>Titre<input name="title" required placeholder="Ex. Classer les EPI selon le risque"/></label><div className="form-row"><label>Format<select name="type">{formats.map(f=><option key={f.name}>{f.name}</option>)}</select></label><label>Thématique<select name="theme"><option>Propreté & hygiène</option><option>Sécurité au travail</option><option>Compétences numériques</option><option>Français professionnel</option></select></label></div><label>Durée estimée<input name="duration" type="number" min="3" max="60" defaultValue="10"/></label><ImageInput/><div className="modal-actions"><button type="button" onClick={()=>setMode(null)}>Annuler</button><button className="primary">Créer le brouillon →</button></div></form></>}
     {mode==="ai"&&<><button className="back-link" onClick={()=>setMode("choice")}>← Retour</button><span className="modal-icon ai"><Icon name="wand"/></span><p className="eyebrow">ASSISTANT DOCUMENTÉ CHATGPT</p><h2>Créer un quiz à partir d’un thème.</h2><p className="modal-intro">L’assistant recherche d’abord des références fiables, construit le quiz, puis vérifie chaque réponse et la qualité de la formulation.</p><form onSubmit={aiCreate}>
       <label>Thème principal *<input name="theme" required placeholder="Ex. Les risques chimiques dans le secteur de la propreté"/></label>
       <label>Objectif pédagogique *<input name="objective" required placeholder="Ex. Identifier les pictogrammes et appliquer les protections adaptées"/></label>
       <div className="form-row"><label>Public concerné<input name="audience" required placeholder="Ex. Agents de propreté débutants"/></label><label>Niveau<select name="level"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option></select></label></div>
       <label>Précisions facultatives<textarea name="prompt" placeholder="Ex. Utiliser un français simple, prévoir des situations de chantier et éviter les questions uniquement théoriques."/></label>
       <div className="form-row"><label>Format<select name="type">{formats.slice(0,6).map(f=><option key={f.name}>{f.name}</option>)}</select></label><label>Nombre de questions<select name="count"><option>5</option><option>8</option><option>10</option></select></label></div>
+      <ImageInput/>
       <label className="research-toggle"><input type="checkbox" name="research" defaultChecked/><span><b>Rechercher et croiser les sources</b><small>Priorité aux organismes publics, textes officiels, institutions et organismes professionnels reconnus.</small></span></label>
       <div className="quality-list"><span>✓ Une seule réponse incontestable</span><span>✓ Aucune question ambiguë</span><span>✓ Explication après chaque réponse</span><span>✓ Sources consultables</span></div>
       {generating&&<div className="generation-progress"><span className="loader dark"/><div><b>{generationStatus}</b><small>Recherche → rédaction → contrôle qualité</small></div></div>}
@@ -181,9 +200,16 @@ function Creator({mode,setMode,manualCreate,aiCreate,externalCreate,generating,g
   </section></div>
 }
 
+function ImageInput(){
+  return <label className="image-upload"><input type="file" name="image" accept="image/png,image/jpeg"/><span><Icon name="upload" size={20}/></span><div><b>Ajouter une image de présentation</b><small>PNG ou JPEG • 5 Mo maximum • optionnel</small></div><em>Choisir une image</em></label>
+}
+
 function Player({activity,step,selected,setSelected,finish,score,next,close,save,saved}:{activity:Activity;step:number;selected:number|null;setSelected:(n:number)=>void;finish:boolean;score:number;next:()=>void;close:()=>void;save:(e:FormEvent<HTMLFormElement>)=>void;saved:boolean}){
-  const q=activity.questions[step]||sampleQuestions[0];return <div className="modal-backdrop play-bg" onMouseDown={close}><section className="modal play-modal" onMouseDown={e=>e.stopPropagation()} role="dialog" aria-modal="true"><button className="modal-close" onClick={close}>×</button>
-    {!finish?<><div className="play-head"><span className="question-tag mint">{activity.type}</span><span>{step+1} / {activity.questions.length}</span></div><div className="progress"><i style={{width:`${(step+1)/activity.questions.length*100}%`}}/></div>{q.objective&&<p className="question-objective">OBJECTIF : {q.objective}</p>}<h2>{q.question}</h2><div className="answers">{q.options.map((o,i)=><button className={selected===i?(i===q.correct?"correct":"wrong"):""} key={o} onClick={()=>setSelected(i)}><span>{String.fromCharCode(65+i)}</span>{o}</button>)}</div>{selected!==null&&<><div className={`feedback ${selected===q.correct?"good":"retry"}`}><strong>{selected===q.correct?"Bonne réponse !":"Pas tout à fait"}</strong><p>{q.explanation}</p></div>{q.sourceIndexes?.length?<div className="question-sources"><b>Sources :</b>{q.sourceIndexes.map(i=>activity.sources?.[i]).filter(Boolean).map((s,i)=><a key={s!.url} href={s!.url} target="_blank" rel="noreferrer">{i+1}. {s!.publisher||s!.title}</a>)}</div>:null}</>}<button className="next-btn" disabled={selected===null} onClick={next}>{step===activity.questions.length-1?"Voir mon résultat":"Question suivante"} →</button></>:
+  const q=activity.questions[step]||sampleQuestions[0];
+  const leave=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});close()};
+  const expand=()=>document.documentElement.requestFullscreen?.().catch(()=>{});
+  return <div className="modal-backdrop play-bg" onMouseDown={leave}><section className="modal play-modal" onMouseDown={e=>e.stopPropagation()} role="dialog" aria-modal="true"><button className="modal-close" onClick={leave}>×</button>
+    {!finish?<div className={`play-stage ${activity.coverImageUrl?"has-visual":""}`}><div className="play-head"><span className="question-tag mint">{activity.type}</span><div><span>{step+1} / {activity.questions.length}</span><button onClick={expand} title="Afficher en plein écran"><Icon name="expand" size={16}/>Plein écran</button></div></div><div className="progress"><i style={{width:`${(step+1)/activity.questions.length*100}%`}}/></div>{activity.coverImageUrl&&<img className="quiz-image" src={activity.coverImageUrl} alt={activity.imageAlt||`Illustration de ${activity.title}`}/>}<div className="question-zone">{q.objective&&<p className="question-objective">OBJECTIF : {q.objective}</p>}<h2>{q.question}</h2><div className="answers">{q.options.map((o,i)=><button className={selected===i?(i===q.correct?"correct":"wrong"):""} key={o} onClick={()=>setSelected(i)}><span>{String.fromCharCode(65+i)}</span>{o}</button>)}</div>{selected!==null&&<><div className={`feedback ${selected===q.correct?"good":"retry"}`}><strong>{selected===q.correct?"Bonne réponse !":"Pas tout à fait"}</strong><p>{q.explanation}</p></div>{q.sourceIndexes?.length?<div className="question-sources"><b>Sources :</b>{q.sourceIndexes.map(i=>activity.sources?.[i]).filter(Boolean).map((s,i)=><a key={s!.url} href={s!.url} target="_blank" rel="noreferrer">{i+1}. {s!.publisher||s!.title}</a>)}</div>:null}</>}<button className="next-btn" disabled={selected===null} onClick={next}>{step===activity.questions.length-1?"Voir mon résultat":"Question suivante"} →</button></div></div>:
     <div className="finish-screen"><div className="score-ring"><strong>{Math.round(score/activity.questions.length*100)}%</strong><span>{score}/{activity.questions.length} bonnes réponses</span></div><p className="eyebrow">ACTIVITÉ TERMINÉE</p><h2>Bravo, vous avez terminé !</h2><p>Renseignez votre nom pour transmettre le résultat au formateur.</p>{!saved?<form onSubmit={save}><label>Votre prénom et votre nom<input name="learnerName" required placeholder="Ex. Fatou Santogo" autoFocus/></label><button className="primary">Envoyer mon résultat →</button></form>:<div className="saved-result"><span>✓</span><strong>Résultat envoyé au formateur</strong><button onClick={close}>Terminer</button></div>}</div>}
   </section></div>
 }

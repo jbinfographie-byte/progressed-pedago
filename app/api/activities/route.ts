@@ -10,6 +10,7 @@ export async function GET() {
       questions:JSON.parse(row.questionsJson||"[]"),
       sources:JSON.parse(row.researchJson||"[]"),
       quality:JSON.parse(row.qualityJson||"{}"),
+      coverImageUrl:row.imageKey?`/api/media/${encodeURIComponent(row.imageKey)}`:null,
     })) });
   } catch {
     return Response.json({ activities:[] });
@@ -29,6 +30,8 @@ export async function POST(request:Request) {
       questionsJson:JSON.stringify(body.questions||[]),
       researchJson:JSON.stringify(body.sources||[]),
       qualityJson:JSON.stringify(body.quality||{}),
+      imageKey:body.imageKey?String(body.imageKey):null,
+      imageAlt:body.imageAlt?String(body.imageAlt):null,
       source:String(body.source||"manual"),
       externalUrl:body.externalUrl?String(body.externalUrl):null,
     };
@@ -38,6 +41,7 @@ export async function POST(request:Request) {
       questions:JSON.parse(activity.questionsJson),
       sources:JSON.parse(activity.researchJson),
       quality:JSON.parse(activity.qualityJson),
+      coverImageUrl:activity.imageKey?`/api/media/${encodeURIComponent(activity.imageKey)}`:null,
     } },{ status:201 });
   } catch {
     return Response.json({ error:"Impossible d’enregistrer l’activité." },{ status:500 });

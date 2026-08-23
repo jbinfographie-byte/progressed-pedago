@@ -10,6 +10,8 @@ export const activities = sqliteTable("activities", {
   questionsJson: text("questions_json").notNull().default("[]"),
   researchJson: text("research_json").notNull().default("[]"),
   qualityJson: text("quality_json").notNull().default("{}"),
+  imageKey: text("image_key"),
+  imageAlt: text("image_alt"),
   source: text("source").notNull().default("manual"),
   externalUrl: text("external_url"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),

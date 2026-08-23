@@ -16,12 +16,21 @@ function fallback(theme:string,type:string,count:number):Generated {
 
 function cleanActivity(raw:Generated,count:number):Generated {
   const seen=new Set<string>();
-  const questions=(Array.isArray(raw.questions)?raw.questions:[]).filter(q=>{
+  const cleaned=(Array.isArray(raw.questions)?raw.questions:[]).filter(q=>{
     const key=String(q.question||"").trim().toLowerCase();if(!key||seen.has(key))return false;seen.add(key);return true;
   }).slice(0,count).map(q=>{
     const options=(Array.isArray(q.options)?q.options:[]).map(String).map(x=>x.trim()).filter(Boolean).slice(0,4);
     return {...q,question:String(q.question).trim(),options,correct:Number.isInteger(q.correct)&&q.correct>=0&&q.correct<options.length?q.correct:0,explanation:String(q.explanation||"").trim(),objective:String(q.objective||"").trim(),difficulty:String(q.difficulty||"Intermédiaire"),sourceIndexes:(q.sourceIndexes||[]).filter(i=>Number.isInteger(i)&&i>=0&&i<(raw.sources||[]).length)};
   }).filter(q=>q.options.length>=2&&q.explanation);
+  const startPosition=Math.floor(Math.random()*4);
+  const questions=cleaned.map((q,index)=>{
+    const correctText=q.options[q.correct];
+    const distractors=q.options.filter((_,i)=>i!==q.correct);
+    for(let i=distractors.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[distractors[i],distractors[j]]=[distractors[j],distractors[i]]}
+    const target=(startPosition+index)%q.options.length;
+    const options=[...distractors];options.splice(target,0,correctText);
+    return {...q,options,correct:target};
+  });
   const sources=(raw.sources||[]).filter(s=>/^https:\/\//.test(String(s.url||""))).slice(0,8);
   const structural=questions.length===count&&questions.every(q=>q.options.length>=3&&new Set(q.options.map(x=>x.toLowerCase())).size===q.options.length);
   const sourced=questions.every(q=>q.sourceIndexes.length>0)||sources.length===0;
