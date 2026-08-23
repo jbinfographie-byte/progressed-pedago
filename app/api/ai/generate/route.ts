@@ -1,5 +1,5 @@
-import { env } from "cloudflare:workers";
 import { requireTrainer } from "@/app/auth";
+import { getOpenAIConfig } from "@/app/ai-config";
 
 type Source={ title:string; url:string; publisher:string };
 type Question={ question:string; options:string[]; correct:number; explanation:string; objective:string; difficulty:string; sourceIndexes:number[] };
@@ -47,8 +47,8 @@ export async function POST(request:Request) {
   const type=String(body.type||"Quiz interactif");
   const count=Math.min(10,Math.max(3,Number(body.count||5)));
   if(!theme)return Response.json({error:"Le thème est obligatoire."},{status:400});
-  const secrets=env as unknown as {OPENAI_API_KEY?:string;OPENAI_MODEL?:string};
-  if(!secrets.OPENAI_API_KEY)return Response.json({error:"La connexion à l’intelligence artificielle n’est pas configurée. L’administrateur doit ajouter la clé OpenAI dans les réglages du site."},{status:503});
+  const config=await getOpenAIConfig();
+  if(!config)return Response.json({error:"La connexion à l’intelligence artificielle n’est pas configurée. L’administrateur doit ajouter la clé OpenAI dans les réglages du site."},{status:503});
 
   const schema={type:"object",additionalProperties:false,properties:{
     title:{type:"string"},type:{type:"string"},theme:{type:"string"},duration:{type:"integer"},introduction:{type:"string"},
@@ -80,8 +80,8 @@ MÉTHODE OBLIGATOIRE :
 Si les sources disponibles sont insuffisantes, réduis la portée des questions au lieu d’inventer. Chaque explication doit justifier la bonne réponse en français simple.`;
 
   try{
-    const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":`Bearer ${secrets.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({
-      model:secrets.OPENAI_MODEL||"gpt-5.6",
+    const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":`Bearer ${config.apiKey}`,"Content-Type":"application/json"},body:JSON.stringify({
+      model:config.model,
       store:false,
       reasoning:{effort:"medium"},
       tools:body.research===false?[]:[{type:"web_search"}],

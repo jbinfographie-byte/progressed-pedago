@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { requireTrainer } from "@/app/auth";
+import { getOpenAIConfig } from "@/app/ai-config";
 
 type Source={title:string;url:string;publisher:string};
 type Question={question:string;options:string[];correct:number;explanation:string;objective:string;difficulty:string;sourceIndexes:number[]};
@@ -38,11 +39,11 @@ export async function POST(request:Request){
     const addOns=form.getAll("addOns").map(String).filter(value=>["exercises","tables","diagrams"].includes(value));
     const validatedAnalysis=String(form.get("validatedAnalysis")||"").trim();
     if(pdf&&!validatedAnalysis)return Response.json({error:"Analysez le PDF puis validez au moins une page avant de lancer la création."},{status:400});
-    const secrets=env as unknown as {OPENAI_API_KEY?:string;OPENAI_MODEL?:string};
+    const config=await getOpenAIConfig();
     let generated:GeneratedCourse;
     let mode="demo";
 
-    if(secrets.OPENAI_API_KEY){
+    if(config){
       const schema={type:"object",additionalProperties:false,properties:{title:{type:"string"},theme:{type:"string"},duration:{type:"integer"},introduction:{type:"string"},lesson:{type:"object",additionalProperties:false,properties:{title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"},hook:{type:"string"},miniChallenge:{type:"string"},memoryAid:{type:"string"},sections:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},content:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},example:{type:"string"}},required:["title","content","keyPoints","example"]}},tables:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},headers:{type:"array",items:{type:"string"}},rows:{type:"array",items:{type:"array",items:{type:"string"}}}},required:["title","headers","rows"]}},diagrams:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},steps:{type:"array",items:{type:"string"}},caption:{type:"string"}},required:["title","steps","caption"]}},exercises:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},instruction:{type:"string"},expectedAnswer:{type:"string"}},required:["title","instruction","expectedAnswer"]}}},required:["title","summary","keyPoints","steps","learnerTip","hook","miniChallenge","memoryAid","sections","tables","diagrams","exercises"]},questions:{type:"array",items:{type:"object",additionalProperties:false,properties:{question:{type:"string"},options:{type:"array",items:{type:"string"}},correct:{type:"integer"},explanation:{type:"string"},objective:{type:"string"},difficulty:{type:"string"},sourceIndexes:{type:"array",items:{type:"integer"}}},required:["question","options","correct","explanation","objective","difficulty","sourceIndexes"]}},sources:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},url:{type:"string"},publisher:{type:"string"}},required:["title","url","publisher"]}},quality:{type:"object",additionalProperties:false,properties:{score:{type:"integer"},factualConsistency:{type:"boolean"},noAmbiguity:{type:"boolean"},levelFit:{type:"boolean"},cleanFrench:{type:"boolean"},duplicateFree:{type:"boolean"},reviewSummary:{type:"string"}},required:["score","factualConsistency","noAmbiguity","levelFit","cleanFrench","duplicateFree","reviewSummary"]}},required:["title","theme","duration","introduction","lesson","questions","sources","quality"]};
       const requestedPrimary=primaryOutput==="course"?"un cours complet":primaryOutput==="quiz"?"un quiz autonome":`une activité de type ${form.get("activityFormat")||"mise en situation"}`;
       const requestedAddOns=addOns.length?addOns.join(", "):"aucun support complémentaire";
@@ -51,7 +52,7 @@ export async function POST(request:Request){
       if(pdf)content.push({type:"input_file",filename:pdf.name,file_data:`data:application/pdf;base64,${toBase64(await pdf.arrayBuffer())}`});
       content.push({type:"input_text",text:prompt});
       const research=form.get("research")==="on";
-      const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${secrets.OPENAI_API_KEY}`,"Content-Type":"application/json"},body:JSON.stringify({model:secrets.OPENAI_MODEL||"gpt-5.6",store:false,reasoning:{effort:"medium"},tools:research?[{type:"web_search"}]:[],input:[{role:"user",content}],text:{format:{type:"json_schema",name:"complete_training_course",strict:true,schema}}})});
+      const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${config.apiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:config.model,store:false,reasoning:{effort:"medium"},tools:research?[{type:"web_search"}]:[],input:[{role:"user",content}],text:{format:{type:"json_schema",name:"complete_training_course",strict:true,schema}}})});
       if(!response.ok)throw new Error("L’analyse IA du PDF n’a pas abouti.");
       const data=await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>};
       const raw=data.output_text||data.output?.flatMap(item=>item.content||[]).map(item=>item.text||"").join("")||"";

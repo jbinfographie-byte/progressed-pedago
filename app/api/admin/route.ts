@@ -3,16 +3,18 @@ import { getDb } from "@/db";
 import { appSettings, authEvents, trainerSessions, trainers } from "@/db/schema";
 import { hashCode, makeSalt, recordAuthEvent, requireAdmin, validPassword } from "@/app/auth";
 import { emailIsConfigured } from "@/app/email";
+import { getOpenAIStatus, removeOpenAIKey, saveOpenAIKey } from "@/app/ai-config";
 
 export async function GET(request:Request){
   try{
     const admin=await requireAdmin(request);if(!admin)return Response.json({error:"Accès administrateur requis."},{status:403});
-    const [accounts,events,settings]=await Promise.all([
+    const [accounts,events,settings,aiStatus]=await Promise.all([
       getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,emailVerified:trainers.emailVerified,failedAttempts:trainers.failedAttempts,lockedUntil:trainers.lockedUntil,lastLoginAt:trainers.lastLoginAt,mustChangePassword:trainers.mustChangePassword,createdAt:trainers.createdAt}).from(trainers).orderBy(desc(trainers.createdAt)),
       getDb().select().from(authEvents).orderBy(desc(authEvents.createdAt)).limit(50),
       getDb().select().from(appSettings),
+      getOpenAIStatus(),
     ]);
-    return Response.json({accounts,events,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false",emailConfigured:emailIsConfigured()}});
+    return Response.json({accounts,events,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false",emailConfigured:emailIsConfigured(),aiConfigured:aiStatus.configured,aiSource:aiStatus.source}});
   }catch{return Response.json({error:"Impossible de charger l’administration."},{status:500})}
 }
 
@@ -38,6 +40,13 @@ export async function PATCH(request:Request){
       const enabled=Boolean(body.enabled);await getDb().insert(appSettings).values({key:"registration_enabled",value:String(enabled),updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:appSettings.key,set:{value:String(enabled),updatedAt:new Date().toISOString()}});
       await recordAuthEvent(admin.email,"setting_changed",enabled?"Inscriptions ouvertes":"Inscriptions fermées");return Response.json({ok:true});
     }
+    if(action==="openai-key"){
+      const apiKey=String(body.apiKey||"");await saveOpenAIKey(apiKey);
+      await recordAuthEvent(admin.email,"setting_changed","Connexion OpenAI configurée");return Response.json({ok:true,message:"Clé OpenAI vérifiée et enregistrée dans le coffre-fort."});
+    }
+    if(action==="remove-openai-key"){
+      await removeOpenAIKey();await recordAuthEvent(admin.email,"setting_changed","Connexion OpenAI supprimée");return Response.json({ok:true,message:"Clé OpenAI supprimée."});
+    }
     return Response.json({error:"Action inconnue."},{status:400});
-  }catch{return Response.json({error:"Impossible d’appliquer cette action."},{status:500})}
+  }catch(error){return Response.json({error:error instanceof Error?error.message:"Impossible d’appliquer cette action."},{status:500})}
 }
