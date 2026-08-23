@@ -48,7 +48,7 @@ export async function POST(request:Request) {
   const count=Math.min(10,Math.max(3,Number(body.count||5)));
   if(!theme)return Response.json({error:"Le thème est obligatoire."},{status:400});
   const secrets=env as unknown as {OPENAI_API_KEY?:string;OPENAI_MODEL?:string};
-  if(!secrets.OPENAI_API_KEY)return Response.json({activity:fallback(theme,type,count),mode:"demo",notice:"Ajoutez une clé API OpenAI pour activer la recherche de sources."});
+  if(!secrets.OPENAI_API_KEY)return Response.json({error:"La connexion à l’intelligence artificielle n’est pas configurée. L’administrateur doit ajouter la clé OpenAI dans les réglages du site."},{status:503});
 
   const schema={type:"object",additionalProperties:false,properties:{
     title:{type:"string"},type:{type:"string"},theme:{type:"string"},duration:{type:"integer"},introduction:{type:"string"},
@@ -119,6 +119,6 @@ Construis le mini-cours et le quiz uniquement après la recherche. Le cours doit
     if(activity.questions.length<count)throw new Error("Insufficient valid questions");
     return Response.json({activity,mode:"openai-research"});
   }catch{
-    return Response.json({activity:fallback(theme,type,count),mode:"demo",notice:"La génération documentée n’a pas abouti. Un brouillon non publié a été créé pour révision."});
+    return Response.json({error:"La génération IA n’a pas abouti. Vérifiez la connexion OpenAI ou simplifiez votre demande."},{status:502});
   }
 }
