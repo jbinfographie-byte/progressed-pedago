@@ -3,7 +3,8 @@ import { requireTrainer } from "@/app/auth";
 
 type Source={ title:string; url:string; publisher:string };
 type Question={ question:string; options:string[]; correct:number; explanation:string; objective:string; difficulty:string; sourceIndexes:number[] };
-type Generated={ title:string; type:string; theme:string; duration:number; introduction:string; questions:Question[]; sources:Source[]; quality:{ score:number; factualConsistency:boolean; noAmbiguity:boolean; levelFit:boolean; cleanFrench:boolean; duplicateFree:boolean; reviewSummary:string } };
+type Lesson={ title:string; summary:string; keyPoints:string[]; steps:string[]; learnerTip:string };
+type Generated={ title:string; type:string; theme:string; duration:number; introduction:string; lesson:Lesson; questions:Question[]; sources:Source[]; quality:{ score:number; factualConsistency:boolean; noAmbiguity:boolean; levelFit:boolean; cleanFrench:boolean; duplicateFree:boolean; reviewSummary:string } };
 
 function fallback(theme:string,type:string,count:number):Generated {
   const topic=theme.trim()||"les bonnes pratiques professionnelles";
@@ -12,7 +13,7 @@ function fallback(theme:string,type:string,count:number):Generated {
     {question:`Comment vérifier qu’une consigne liée à « ${topic} » est comprise ?`,options:["La faire reformuler ou démontrer","La répéter plus fort","Supprimer l’étape pratique"],correct:0,explanation:"La reformulation ou la démonstration permet de contrôler la compréhension.",objective:"Contrôler la compréhension",difficulty:"Débutant",sourceIndexes:[]},
     {question:"Quelle méthode permet de progresser après une erreur ?",options:["Analyser, corriger puis recommencer","Masquer l’erreur","Arrêter définitivement l’activité"],correct:0,explanation:"Une correction suivie d’un nouvel essai transforme l’erreur en apprentissage.",objective:"Adopter une démarche de correction",difficulty:"Intermédiaire",sourceIndexes:[]},
   ];
-  return {title:`Quiz : ${topic.slice(0,52)}`,type,theme:topic,duration:Math.max(8,count*2),introduction:"Répondez aux questions puis consultez les explications.",questions:Array.from({length:count},(_,i)=>({...base[i%base.length],question:i<3?base[i].question:`${base[i%3].question} — situation ${i+1}`})),sources:[],quality:{score:70,factualConsistency:true,noAmbiguity:true,levelFit:true,cleanFrench:true,duplicateFree:true,reviewSummary:"Brouillon pédagogique sans recherche web : les informations métier doivent être validées avant diffusion."}};
+  return {title:`Quiz : ${topic.slice(0,52)}`,type,theme:topic,duration:Math.max(8,count*2),introduction:"Répondez aux questions puis consultez les explications.",lesson:{title:`Comprendre ${topic}`,summary:`Ce cours présente les notions essentielles à connaître avant de réaliser l’activité sur ${topic}.`,keyPoints:["Observer la situation avant d’agir","Consulter les consignes applicables","Vérifier sa compréhension avant la mise en pratique"],steps:["Identifier l’objectif de l’activité","Repérer les informations importantes","Appliquer la méthode puis contrôler le résultat"],learnerTip:"Prenez le temps de relire la consigne et appuyez-vous sur les explications après chaque réponse."},questions:Array.from({length:count},(_,i)=>({...base[i%base.length],question:i<3?base[i].question:`${base[i%3].question} — situation ${i+1}`})),sources:[],quality:{score:70,factualConsistency:true,noAmbiguity:true,levelFit:true,cleanFrench:true,duplicateFree:true,reviewSummary:"Brouillon pédagogique sans recherche web : les informations métier doivent être validées avant diffusion."}};
 }
 
 function cleanActivity(raw:Generated,count:number):Generated {
@@ -51,12 +52,13 @@ export async function POST(request:Request) {
 
   const schema={type:"object",additionalProperties:false,properties:{
     title:{type:"string"},type:{type:"string"},theme:{type:"string"},duration:{type:"integer"},introduction:{type:"string"},
+    lesson:{type:"object",additionalProperties:false,properties:{title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"}},required:["title","summary","keyPoints","steps","learnerTip"]},
     questions:{type:"array",items:{type:"object",additionalProperties:false,properties:{
       question:{type:"string"},options:{type:"array",items:{type:"string"}},correct:{type:"integer"},explanation:{type:"string"},objective:{type:"string"},difficulty:{type:"string"},sourceIndexes:{type:"array",items:{type:"integer"}}
     },required:["question","options","correct","explanation","objective","difficulty","sourceIndexes"]}},
     sources:{type:"array",items:{type:"object",additionalProperties:false,properties:{title:{type:"string"},url:{type:"string"},publisher:{type:"string"}},required:["title","url","publisher"]}},
     quality:{type:"object",additionalProperties:false,properties:{score:{type:"integer"},factualConsistency:{type:"boolean"},noAmbiguity:{type:"boolean"},levelFit:{type:"boolean"},cleanFrench:{type:"boolean"},duplicateFree:{type:"boolean"},reviewSummary:{type:"string"}},required:["score","factualConsistency","noAmbiguity","levelFit","cleanFrench","duplicateFree","reviewSummary"]}
-  },required:["title","type","theme","duration","introduction","questions","sources","quality"]};
+  },required:["title","type","theme","duration","introduction","lesson","questions","sources","quality"]};
 
   const instructions=`Tu es à la fois documentaliste et ingénieur pédagogique spécialisé dans la formation professionnelle des adultes.
 Tu dois produire une activité exacte, claire, ludique et directement utilisable.
@@ -71,7 +73,8 @@ MÉTHODE OBLIGATOIRE :
 7. Proposer des distracteurs plausibles mais incontestablement faux.
 8. Adapter le français et la difficulté au public indiqué.
 9. Vérifier : exactitude, doublons, orthographe, cohérence entre question/réponse/explication, validité de l’index correct.
-10. Associer chaque question aux index des sources utilisées, puis effectuer une relecture finale et attribuer un score qualité réaliste.
+10. Créer avant l’activité un mini-cours structuré : résumé clair, 3 à 6 points essentiels, étapes de méthode et conseil pratique.
+11. Associer chaque question aux index des sources utilisées, puis effectuer une relecture finale et attribuer un score qualité réaliste.
 
 Si les sources disponibles sont insuffisantes, réduis la portée des questions au lieu d’inventer. Chaque explication doit justifier la bonne réponse en français simple.`;
 
@@ -92,7 +95,7 @@ FORMAT : ${type}
 NOMBRE EXACT DE QUESTIONS : ${count}
 PRÉCISIONS DU FORMATEUR : ${body.prompt||"Aucune"}
 
-Construis le quiz uniquement après la recherche. Les sources doivent être directement liées aux réponses.`,
+Construis le mini-cours et le quiz uniquement après la recherche. Le cours doit préparer l’apprenant à réussir l’activité et les sources doivent être directement liées aux explications.`,
       text:{format:{type:"json_schema",name:"researched_pedagogical_activity",strict:true,schema}}
     })});
     if(!response.ok)throw new Error("OpenAI response failed");
