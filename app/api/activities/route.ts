@@ -1,14 +1,18 @@
 import { desc, eq } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
-import { activities } from "@/db/schema";
+import { activities, appSettings } from "@/db/schema";
 import { requireTrainer } from "@/app/auth";
 
 export async function GET(request:Request) {
   const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try {
-    const rows = await getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(100);
-    return Response.json({ activities:rows.map(row=>{const metadata=JSON.parse(row.qualityJson||"{}");return {
+    const [rows,hiddenSetting] = await Promise.all([
+      getDb().select().from(activities).orderBy(desc(activities.createdAt)).limit(100),
+      getDb().select({value:appSettings.value}).from(appSettings).where(eq(appSettings.key,"hidden_starter_activities")).limit(1),
+    ]);
+    let hiddenStarterIds:number[]=[];try{hiddenStarterIds=JSON.parse(hiddenSetting[0]?.value||"[]")}catch{/* Une valeur illisible équivaut à aucune activité masquée. */}
+    return Response.json({ hiddenStarterIds,activities:rows.map(row=>{const metadata=JSON.parse(row.qualityJson||"{}");return {
       ...row,
       questions:JSON.parse(row.questionsJson||"[]"),
       sources:JSON.parse(row.researchJson||"[]"),
@@ -71,7 +75,15 @@ export async function PATCH(request:Request) {
 export async function DELETE(request:Request) {
   const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
   try {
-    const body=await request.json() as {id?:number};
+    const body=await request.json() as {id?:number;starterId?:number};
+    const starterId=Number(body.starterId);
+    if(Number.isInteger(starterId)&&[1,2,3,4].includes(starterId)){
+      const [setting]=await getDb().select({value:appSettings.value}).from(appSettings).where(eq(appSettings.key,"hidden_starter_activities")).limit(1);
+      let hidden:number[]=[];try{hidden=JSON.parse(setting?.value||"[]")}catch{/* La liste sera recréée proprement. */}
+      const next=[...new Set([...hidden,starterId])];
+      await getDb().insert(appSettings).values({key:"hidden_starter_activities",value:JSON.stringify(next),updatedAt:new Date().toISOString()}).onConflictDoUpdate({target:appSettings.key,set:{value:JSON.stringify(next),updatedAt:new Date().toISOString()}});
+      return Response.json({ok:true,starter:true});
+    }
     const id=Number(body.id);if(!Number.isInteger(id)||id<1)return Response.json({error:"Activité invalide."},{status:400});
     const [activity]=await getDb().select().from(activities).where(eq(activities.id,id)).limit(1);
     if(!activity)return Response.json({error:"Activité introuvable."},{status:404});
