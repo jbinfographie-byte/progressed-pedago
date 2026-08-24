@@ -2,8 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { accessInvitations, appSettings, authEvents, trainerSessions, trainers } from "@/db/schema";
 import { hashCode, makeSalt, normalizeEmail, recordAuthEvent, requireAdmin, sha256, validEmail, validPassword } from "@/app/auth";
-
-function accessMailto(email:string,code:string,expiresAt:string){const subject="Votre autorisation Progressed Pédago";const body=`Bonjour,\n\nJe vous autorise à créer votre espace formateur Progressed Pédago avec l’adresse ${email}.\n\nVotre code personnel : ${code}\n\nCe code est valable jusqu’au ${new Date(expiresAt).toLocaleString("fr-FR")} et ne pourra être utilisé qu’une seule fois.\n\nOuvrez le site, choisissez « Créer un accès formateur », puis saisissez votre adresse, votre mot de passe et ce code.\n\nCordialement,\nL’administrateur Progressed Pédago`;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
+function accessMailto(email:string,code:string,expiresAt:string){const subject="Votre autorisation Progressed Pédago";const body=`Bonjour,\n\nVotre espace formateur Progressed Pédago est autorisé.\n\nAdresse autorisée : ${email}\nCode personnel : ${code}\n\nCe code est valable jusqu’au ${new Date(expiresAt).toLocaleString("fr-FR")} et utilisable une seule fois.\n\nOuvrez Progressed Pédago, cliquez sur « Créer un accès formateur », puis saisissez votre adresse, votre mot de passe et ce code.\n\nÀ bientôt,\nL’administrateur Progressed Pédago`;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
 
 export async function GET(request:Request){
   try{
@@ -28,7 +27,7 @@ export async function PATCH(request:Request){
       const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();const codeHash=await sha256(`${email}:${code}`);const now=new Date().toISOString();
       await getDb().insert(accessInvitations).values({email,codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}).onConflictDoUpdate({target:accessInvitations.email,set:{codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}});
       if(existing)await getDb().update(trainers).set({status:"pending",verificationHash:codeHash,verificationExpiresAt:expiresAt,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,existing.id));
-      await recordAuthEvent(email,"invitation_created",`Par ${admin.email} • valable 7 jours`);return Response.json({ok:true,email,code,expiresAt,mailtoUrl:accessMailto(email,code,expiresAt),message:"L’autorisation est enregistrée. Votre messagerie va s’ouvrir avec le message prêt à envoyer."});
+      await recordAuthEvent(email,"invitation_created",`Par ${admin.email} • message préparé • valable 7 jours`);return Response.json({ok:true,email,code,expiresAt,mailtoUrl:accessMailto(email,code,expiresAt),message:"L’autorisation est enregistrée. Votre message est prêt à être envoyé manuellement."});
     }
     if(action==="issue-access-code"){
       const trainerId=Number(body.trainerId);
@@ -40,8 +39,8 @@ export async function PATCH(request:Request){
       const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
       const codeHash=await sha256(`${target.email}:${code}`);await getDb().update(trainers).set({status:"pending",verificationHash:codeHash,verificationExpiresAt:expiresAt,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,target.id));
       const now=new Date().toISOString();await getDb().insert(accessInvitations).values({email:target.email,codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}).onConflictDoUpdate({target:accessInvitations.email,set:{codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}});
-      await recordAuthEvent(target.email,"access_code_issued",`Par ${admin.email} • valable 7 jours`);
-      return Response.json({ok:true,code,email:target.email,expiresAt,mailtoUrl:accessMailto(target.email,code,expiresAt),message:"Le code est enregistré. Votre messagerie va s’ouvrir avec l’autorisation prête à envoyer."});
+      await recordAuthEvent(target.email,"access_code_issued",`Par ${admin.email} • message préparé • valable 7 jours`);
+      return Response.json({ok:true,code,email:target.email,expiresAt,mailtoUrl:accessMailto(target.email,code,expiresAt),message:"Le code est enregistré. Le message d’autorisation est prêt à être envoyé manuellement."});
     }
     if(action==="status"){
       const trainerId=Number(body.trainerId);const status=body.status==="inactive"?"inactive":"active";
