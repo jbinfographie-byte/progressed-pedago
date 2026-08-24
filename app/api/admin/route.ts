@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { accessInvitations, appSettings, authEvents, trainerSessions, trainers } from "@/db/schema";
 import { hashCode, makeSalt, normalizeEmail, recordAuthEvent, requireAdmin, sha256, validEmail, validPassword } from "@/app/auth";
-function accessMailto(email:string,code:string,expiresAt:string){const subject="Votre autorisation Progressed Pédago";const body=`Bonjour,\n\nVotre espace formateur Progressed Pédago est autorisé.\n\nAdresse autorisée : ${email}\nCode personnel : ${code}\n\nCe code est valable jusqu’au ${new Date(expiresAt).toLocaleString("fr-FR")} et utilisable une seule fois.\n\nOuvrez Progressed Pédago, cliquez sur « Créer un accès formateur », puis saisissez votre adresse, votre mot de passe et ce code.\n\nÀ bientôt,\nL’administrateur Progressed Pédago`;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
+function accessMailto(email:string,code:string,expiresAt:string){const subject="Invitation à rejoindre Progressed Pédago";const body=`Bonjour,\n\nJe vous invite à rejoindre l’espace formateur Progressed Pédago.\n\nVotre code d’activation : ${code}\n\nCe code est personnel et valable jusqu’au ${new Date(expiresAt).toLocaleString("fr-FR")}. Saisissez-le lors de la création de votre espace formateur.\n\nCordialement,\nL’administrateur Progressed Pédago`;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
 
 export async function GET(request:Request){
   try{
