@@ -18,6 +18,7 @@ export async function GET(request:Request) {
       sources:JSON.parse(row.researchJson||"[]"),
       quality:metadata.quality||metadata,
       lesson:metadata.lesson||null,
+      generationChoices:metadata.generationChoices||null,
       coverImageUrl:row.imageKey?`/api/media/${encodeURIComponent(row.imageKey)}`:null,
     }}) });
   } catch {
@@ -38,7 +39,7 @@ export async function POST(request:Request) {
       duration:Number(body.duration||10),
       questionsJson:JSON.stringify(body.questions||[]),
       researchJson:JSON.stringify(body.sources||[]),
-      qualityJson:JSON.stringify({quality:body.quality||{},lesson:body.lesson||null}),
+      qualityJson:JSON.stringify({quality:body.quality||{},lesson:body.lesson||null,generationChoices:body.generationChoices||null}),
       imageKey:body.imageKey?String(body.imageKey):null,
       imageAlt:body.imageAlt?String(body.imageAlt):null,
       source:String(body.source||"manual"),
@@ -52,6 +53,7 @@ export async function POST(request:Request) {
       sources:JSON.parse(activity.researchJson),
       quality:metadata.quality||metadata,
       lesson:metadata.lesson||null,
+      generationChoices:metadata.generationChoices||null,
       coverImageUrl:activity.imageKey?`/api/media/${encodeURIComponent(activity.imageKey)}`:null,
     } },{ status:201 });
   } catch {
@@ -64,7 +66,7 @@ export async function PATCH(request:Request) {
   try {
     const body=await request.json() as Record<string,unknown>;
     const id=Number(body.id);if(!Number.isInteger(id)||id<1)return Response.json({error:"Activité invalide."},{status:400});
-    const [activity]=await getDb().update(activities).set({qualityJson:JSON.stringify({quality:body.quality||{},lesson:body.lesson||null})}).where(eq(activities.id,id)).returning();
+    const [activity]=await getDb().update(activities).set({qualityJson:JSON.stringify({quality:body.quality||{},lesson:body.lesson||null,generationChoices:body.generationChoices||null})}).where(eq(activities.id,id)).returning();
     if(!activity)return Response.json({error:"Activité introuvable."},{status:404});
     return Response.json({ok:true});
   } catch {
