@@ -2,19 +2,20 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { appSettings, authEvents, trainerSessions, trainers } from "@/db/schema";
 import { hashCode, makeSalt, recordAuthEvent, requireAdmin, sha256, validPassword } from "@/app/auth";
-import { emailIsConfigured, sendAccessCodeToAdmin } from "@/app/email";
+import { getEmailStatus, removeEmailConfig, saveEmailConfig, sendAccessCodeEmail } from "@/app/email";
 import { getOpenAIStatus, removeOpenAIKey, saveOpenAIKey } from "@/app/ai-config";
 
 export async function GET(request:Request){
   try{
     const admin=await requireAdmin(request);if(!admin)return Response.json({error:"Accès administrateur requis."},{status:403});
-    const [accounts,events,settings,aiStatus]=await Promise.all([
+    const [accounts,events,settings,aiStatus,emailStatus]=await Promise.all([
       getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,emailVerified:trainers.emailVerified,verificationExpiresAt:trainers.verificationExpiresAt,failedAttempts:trainers.failedAttempts,lockedUntil:trainers.lockedUntil,lastLoginAt:trainers.lastLoginAt,mustChangePassword:trainers.mustChangePassword,createdAt:trainers.createdAt}).from(trainers).orderBy(desc(trainers.createdAt)),
       getDb().select().from(authEvents).orderBy(desc(authEvents.createdAt)).limit(50),
       getDb().select().from(appSettings),
       getOpenAIStatus(admin.id),
+      getEmailStatus(),
     ]);
-    return Response.json({accounts,events,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false",emailConfigured:emailIsConfigured(),aiConfigured:aiStatus.configured,aiSource:aiStatus.source}});
+    return Response.json({accounts,events,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false",emailConfigured:emailStatus.configured,emailSource:emailStatus.source,emailFrom:emailStatus.from,aiConfigured:aiStatus.configured,aiSource:aiStatus.source}});
   }catch{return Response.json({error:"Impossible de charger l’administration."},{status:500})}
 }
 
@@ -27,12 +28,19 @@ export async function PATCH(request:Request){
       const [target]=await getDb().select({id:trainers.id,email:trainers.email,emailVerified:trainers.emailVerified,role:trainers.role}).from(trainers).where(eq(trainers.id,trainerId)).limit(1);
       if(!target||target.role!=="trainer")return Response.json({error:"Demande formateur introuvable."},{status:404});
       if(target.emailVerified)return Response.json({error:"Ce formateur possède déjà un accès autorisé."},{status:409});
-      const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";const random=crypto.getRandomValues(new Uint8Array(10));const code=Array.from(random,byte=>alphabet[byte%alphabet.length]).join("");
+      const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";const random=crypto.getRandomValues(new Uint8Array(10));const generated=Array.from(random,byte=>alphabet[byte%alphabet.length]).join("");const code=String(body.accessCode||generated).trim().toUpperCase();
+      if(code.length<10||code.length>32||!/^[A-Z0-9-]+$/.test(code)||!/[A-Z]/.test(code)||!/\d/.test(code))return Response.json({error:"Choisissez un code de 10 à 32 caractères avec au moins une lettre et un chiffre. Le tiret est autorisé."},{status:400});
       const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
       await getDb().update(trainers).set({status:"pending",verificationHash:await sha256(`${target.email}:${code}`),verificationExpiresAt:expiresAt,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,target.id));
-      const sent=await sendAccessCodeToAdmin(admin.email,target.email,code,expiresAt);
+      const sent=await sendAccessCodeEmail(target.email,code,expiresAt);
       await recordAuthEvent(target.email,"access_code_issued",`Par ${admin.email} • valable 7 jours`);
-      return Response.json({ok:true,code,email:target.email,expiresAt,emailSent:sent.ok,message:sent.ok?"Le code a aussi été envoyé à votre adresse administrateur.":"Copiez ce code maintenant : il ne sera plus affiché ensuite."});
+      return Response.json({ok:true,code,email:target.email,expiresAt,emailSent:sent.ok,message:sent.ok?"Le code a été envoyé au formateur par e-mail.":"Le code est créé, mais l’e-mail n’a pas été envoyé. Copiez-le ou configurez la messagerie."});
+    }
+    if(action==="email-config"){
+      await saveEmailConfig(String(body.apiKey||""),String(body.emailFrom||""));await recordAuthEvent(admin.email,"setting_changed","Messagerie Resend configurée");return Response.json({ok:true,message:"La messagerie a été enregistrée et activée."});
+    }
+    if(action==="remove-email-config"){
+      await removeEmailConfig();await recordAuthEvent(admin.email,"setting_changed","Messagerie Resend supprimée");return Response.json({ok:true,message:"La configuration de messagerie a été supprimée."});
     }
     if(action==="status"){
       const trainerId=Number(body.trainerId);const status=body.status==="inactive"?"inactive":"active";

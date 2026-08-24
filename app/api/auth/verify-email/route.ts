@@ -6,7 +6,7 @@ import { createSession, normalizeEmail, recordAuthEvent, safeEqual, sessionHeade
 export async function POST(request:Request){
   try{
     const body=await request.json() as Record<string,unknown>;const email=normalizeEmail(body.email);const code=String(body.code||"").trim().toUpperCase();
-    if(!/^[A-Z2-9]{10}$/.test(code))return Response.json({error:"Saisissez le code unique de 10 caractères remis par l’administrateur."},{status:400});
+    if(code.length<10||code.length>32||!/^[A-Z0-9-]+$/.test(code))return Response.json({error:"Saisissez le code personnel de 10 à 32 caractères envoyé par l’administrateur."},{status:400});
     const [trainer]=await getDb().select().from(trainers).where(eq(trainers.email,email)).limit(1);
     if(!trainer||trainer.emailVerified)return Response.json({error:"Cette demande d’accès est introuvable ou déjà validée."},{status:404});
     if(trainer.lockedUntil&&new Date(trainer.lockedUntil)>new Date())return Response.json({error:"Trop de codes incorrects. Réessayez dans 15 minutes."},{status:423});
