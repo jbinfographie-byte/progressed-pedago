@@ -37,16 +37,17 @@ export async function createSession(trainerId:number){
   await getDb().insert(trainerSessions).values({id,trainerId,expiresAt:expires.toISOString()});
   return {token,expires};
 }
-export function sessionHeader(token:string,expires:Date){return `${sessionCookie}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=Lax; Expires=${expires.toUTCString()}`}
-export function clearSessionHeader(){return `${sessionCookie}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`}
+export function sessionHeader(token:string,expires:Date){return `${sessionCookie}=${encodeURIComponent(token)}; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Expires=${expires.toUTCString()}`}
+export function clearSessionHeader(){return `${sessionCookie}=; Path=/; HttpOnly; Secure; SameSite=None; Partitioned; Max-Age=0`}
 export async function getTrainer(request:Request){
-  const token=cookieValue(request,sessionCookie);if(!token)return null;
-  const id=await sha256(token);const now=new Date().toISOString();
-  const rows=await getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,mustChangePassword:trainers.mustChangePassword,sessionId:trainerSessions.id}).from(trainerSessions).innerJoin(trainers,eq(trainerSessions.trainerId,trainers.id)).where(and(eq(trainerSessions.id,id),gt(trainerSessions.expiresAt,now))).limit(1);
-  return rows[0]?.status==="active"?rows[0]:null;
+  const token=cookieValue(request,sessionCookie);const now=new Date().toISOString();
+  if(token){const id=await sha256(token);const rows=await getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,mustChangePassword:trainers.mustChangePassword,sessionId:trainerSessions.id}).from(trainerSessions).innerJoin(trainers,eq(trainerSessions.trainerId,trainers.id)).where(and(eq(trainerSessions.id,id),gt(trainerSessions.expiresAt,now))).limit(1);if(rows[0]?.status==="active")return rows[0]}
+  const platformEmail=normalizeEmail(request.headers.get("oai-authenticated-user-email"));if(!platformEmail)return null;
+  const rows=await getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,mustChangePassword:trainers.mustChangePassword,sessionId:trainerSessions.id}).from(trainerSessions).innerJoin(trainers,eq(trainerSessions.trainerId,trainers.id)).where(and(eq(trainers.email,platformEmail),eq(trainers.status,"active"),gt(trainerSessions.expiresAt,now))).limit(1);
+  return rows[0]||null;
 }
 export async function recordAuthEvent(email:string,event:string,detail?:string){try{await getDb().insert(authEvents).values({email,event,detail:detail||null})}catch{}}
-export async function deleteSession(request:Request){const token=cookieValue(request,sessionCookie);if(token)await getDb().delete(trainerSessions).where(eq(trainerSessions.id,await sha256(token)))}
+export async function deleteSession(request:Request){const token=cookieValue(request,sessionCookie);if(token)await getDb().delete(trainerSessions).where(eq(trainerSessions.id,await sha256(token)));const platformEmail=normalizeEmail(request.headers.get("oai-authenticated-user-email"));if(!platformEmail)return;const [trainer]=await getDb().select({id:trainers.id}).from(trainers).where(eq(trainers.email,platformEmail)).limit(1);if(trainer)await getDb().delete(trainerSessions).where(eq(trainerSessions.trainerId,trainer.id))}
 export async function requireTrainer(request:Request){
   const trainer=await getTrainer(request);
   return trainer?null:Response.json({error:"Connexion requise."},{status:401});
