@@ -89,12 +89,13 @@ export async function DELETE(request:Request) {
     const id=Number(body.id);if(!Number.isInteger(id)||id<1)return Response.json({error:"Activité invalide."},{status:400});
     const [activity]=await getDb().select().from(activities).where(eq(activities.id,id)).limit(1);
     if(!activity)return Response.json({error:"Activité introuvable."},{status:404});
-    const metadata=JSON.parse(activity.qualityJson||"{}") as {lesson?:{sourceDocument?:{key?:string}}};
+    const metadata=JSON.parse(activity.qualityJson||"{}") as {lesson?:{sourceDocument?:{key?:string};sourceDocuments?:Array<{key?:string}>}};
     await getDb().delete(activities).where(eq(activities.id,id));
     if(activity.imageKey&&env.BUCKET){try{await env.BUCKET.delete(activity.imageKey)}catch{/* La fiche reste supprimée même si le nettoyage du fichier doit être retenté. */}}
-    const documentKey=metadata.lesson?.sourceDocument?.key;
-    if(documentKey&&env.BUCKET){try{await env.BUCKET.delete(documentKey)}catch{/* Le nettoyage du document pourra être retenté sans restaurer la fiche. */}}
-    return Response.json({ok:true,deletedFile:Boolean(activity.imageKey||documentKey)});
+    const documentKeys=[metadata.lesson?.sourceDocument?.key,...(metadata.lesson?.sourceDocuments||[]).map(document=>document.key)].filter((key):key is string=>Boolean(key));
+    const uniqueDocumentKeys=[...new Set(documentKeys)];
+    if(env.BUCKET){for(const key of uniqueDocumentKeys){try{await env.BUCKET.delete(key)}catch{/* Le nettoyage du document pourra être retenté sans restaurer la fiche. */}}}
+    return Response.json({ok:true,deletedFile:Boolean(activity.imageKey||uniqueDocumentKeys.length)});
   } catch {
     return Response.json({error:"Impossible de supprimer cette activité."},{status:500});
   }
