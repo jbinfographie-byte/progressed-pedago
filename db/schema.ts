@@ -73,3 +73,13 @@ export const trainerAiSettings = sqliteTable("trainer_ai_settings", {
   encryptedKey: text("encrypted_key").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const accessInvitations = sqliteTable("access_invitations", {
+  id: integer("id").primaryKey({ autoIncrement:true }),
+  email: text("email").notNull().unique(),
+  codeHash: text("code_hash").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

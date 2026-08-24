@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { trainers } from "@/db/schema";
+import { accessInvitations, trainers } from "@/db/schema";
 import { createSession, normalizeEmail, recordAuthEvent, safeEqual, sessionHeader, sha256 } from "@/app/auth";
 
 export async function POST(request:Request){
@@ -19,6 +19,7 @@ export async function POST(request:Request){
       return Response.json({error:lockedUntil?"Trop de codes incorrects. Réessayez dans 15 minutes.":"Le code d’accès est incorrect."},{status:401});
     }
     await getDb().update(trainers).set({emailVerified:true,status:"active",verificationHash:null,verificationExpiresAt:null,failedAttempts:0,lockedUntil:null,lastLoginAt:new Date().toISOString()}).where(eq(trainers.id,trainer.id));
+    await getDb().update(accessInvitations).set({usedAt:new Date().toISOString()}).where(eq(accessInvitations.email,email));
     await recordAuthEvent(email,"access_approved","Code administrateur validé");const session=await createSession(trainer.id);
     return Response.json({trainer:{email:trainer.email,role:trainer.role,mustChangePassword:trainer.mustChangePassword}},{headers:{"set-cookie":sessionHeader(session.token,session.expires)}});
   }catch(error){console.error("Email verification failed",error);return Response.json({error:"La validation n’a pas abouti."},{status:500})}
