@@ -67,3 +67,9 @@ export const appSettings = sqliteTable("app_settings", {
   value: text("value").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const trainerAiSettings = sqliteTable("trainer_ai_settings", {
+  trainerId: integer("trainer_id").primaryKey(),
+  encryptedKey: text("encrypted_key").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});

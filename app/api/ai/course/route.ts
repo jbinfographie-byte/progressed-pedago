@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { requireTrainer } from "@/app/auth";
+import { getTrainer } from "@/app/auth";
 import { getOpenAIConfig } from "@/app/ai-config";
 
 type Source={title:string;url:string;publisher:string};
@@ -25,7 +25,7 @@ function fallbackCourse(theme:string,count:number,fileName?:string):GeneratedCou
 }
 
 export async function POST(request:Request){
-  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
+  const trainer=await getTrainer(request);if(!trainer)return Response.json({error:"Connexion requise."},{status:401});
   try{
     const form=await request.formData();
     const file=form.get("coursePdf");
@@ -39,7 +39,7 @@ export async function POST(request:Request){
     const addOns=form.getAll("addOns").map(String).filter(value=>["exercises","tables","diagrams"].includes(value));
     const validatedAnalysis=String(form.get("validatedAnalysis")||"").trim();
     if(pdf&&!validatedAnalysis)return Response.json({error:"Analysez le PDF puis validez au moins une page avant de lancer la création."},{status:400});
-    const config=await getOpenAIConfig();
+    const config=await getOpenAIConfig(trainer.id);
     let generated:GeneratedCourse;
     let mode="demo";
 

@@ -12,7 +12,7 @@ export async function GET(request:Request){
       getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,emailVerified:trainers.emailVerified,failedAttempts:trainers.failedAttempts,lockedUntil:trainers.lockedUntil,lastLoginAt:trainers.lastLoginAt,mustChangePassword:trainers.mustChangePassword,createdAt:trainers.createdAt}).from(trainers).orderBy(desc(trainers.createdAt)),
       getDb().select().from(authEvents).orderBy(desc(authEvents.createdAt)).limit(50),
       getDb().select().from(appSettings),
-      getOpenAIStatus(),
+      getOpenAIStatus(admin.id),
     ]);
     return Response.json({accounts,events,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false",emailConfigured:emailIsConfigured(),aiConfigured:aiStatus.configured,aiSource:aiStatus.source}});
   }catch{return Response.json({error:"Impossible de charger l’administration."},{status:500})}
@@ -41,11 +41,11 @@ export async function PATCH(request:Request){
       await recordAuthEvent(admin.email,"setting_changed",enabled?"Inscriptions ouvertes":"Inscriptions fermées");return Response.json({ok:true});
     }
     if(action==="openai-key"){
-      const apiKey=String(body.apiKey||"");await saveOpenAIKey(apiKey);
-      await recordAuthEvent(admin.email,"setting_changed","Connexion OpenAI configurée");return Response.json({ok:true,message:"Clé OpenAI vérifiée et enregistrée dans le coffre-fort."});
+      const apiKey=String(body.apiKey||"");await saveOpenAIKey(admin.id,apiKey);
+      await recordAuthEvent(admin.email,"setting_changed","Clé OpenAI personnelle configurée");return Response.json({ok:true,message:"Votre clé OpenAI personnelle a été vérifiée et enregistrée."});
     }
     if(action==="remove-openai-key"){
-      await removeOpenAIKey();await recordAuthEvent(admin.email,"setting_changed","Connexion OpenAI supprimée");return Response.json({ok:true,message:"Clé OpenAI supprimée."});
+      await removeOpenAIKey(admin.id);await recordAuthEvent(admin.email,"setting_changed","Clé OpenAI personnelle supprimée");return Response.json({ok:true,message:"Votre clé OpenAI personnelle a été supprimée."});
     }
     return Response.json({error:"Action inconnue."},{status:400});
   }catch(error){return Response.json({error:error instanceof Error?error.message:"Impossible d’appliquer cette action."},{status:500})}

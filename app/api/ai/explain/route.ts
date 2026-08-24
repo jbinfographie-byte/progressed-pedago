@@ -1,4 +1,4 @@
-import { requireTrainer } from "@/app/auth";
+import { getTrainer } from "@/app/auth";
 import { getOpenAIConfig } from "@/app/ai-config";
 
 type Source={title:string;url:string;publisher:string};
@@ -19,10 +19,10 @@ function fallback(title:string,theme:string):Lesson {
 }
 
 export async function POST(request:Request){
-  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
+  const trainer=await getTrainer(request);if(!trainer)return Response.json({error:"Connexion requise."},{status:401});
   const body=await request.json() as {title?:string;theme?:string;type?:string;introduction?:string;questions?:Array<{question?:string;answer?:string;explanation?:string}>};
   const title=String(body.title||"Activité pédagogique").trim();const theme=String(body.theme||title).trim();
-  const config=await getOpenAIConfig();
+  const config=await getOpenAIConfig(trainer.id);
   if(!config)return Response.json({error:"La connexion à l’intelligence artificielle n’est pas configurée."},{status:503});
   const schema={type:"object",additionalProperties:false,properties:{
     title:{type:"string"},summary:{type:"string"},keyPoints:{type:"array",items:{type:"string"}},steps:{type:"array",items:{type:"string"}},learnerTip:{type:"string"},hook:{type:"string"},miniChallenge:{type:"string"},memoryAid:{type:"string"},

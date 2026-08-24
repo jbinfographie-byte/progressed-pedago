@@ -1,4 +1,4 @@
-import { requireTrainer } from "@/app/auth";
+import { getTrainer } from "@/app/auth";
 import { getOpenAIConfig } from "@/app/ai-config";
 
 type Source={ title:string; url:string; publisher:string };
@@ -41,14 +41,14 @@ function cleanActivity(raw:Generated,count:number):Generated {
 }
 
 export async function POST(request:Request) {
-  const unauthorized=await requireTrainer(request);if(unauthorized)return unauthorized;
+  const trainer=await getTrainer(request);if(!trainer)return Response.json({error:"Connexion requise."},{status:401});
   const body=await request.json() as {theme?:string;objective?:string;audience?:string;prompt?:string;type?:string;count?:number;level?:string;research?:boolean;lessonStyle?:string;lessonLength?:string;lessonPrompt?:string};
   const theme=String(body.theme||"").trim();
   const type=String(body.type||"Quiz interactif");
   const count=Math.min(10,Math.max(3,Number(body.count||5)));
   if(!theme)return Response.json({error:"Le thème est obligatoire."},{status:400});
-  const config=await getOpenAIConfig();
-  if(!config)return Response.json({error:"La connexion à l’intelligence artificielle n’est pas configurée. L’administrateur doit ajouter la clé OpenAI dans les réglages du site."},{status:503});
+  const config=await getOpenAIConfig(trainer.id);
+  if(!config)return Response.json({error:"Ajoutez votre propre clé OpenAI dans Connexions avant de créer avec l’IA."},{status:503});
 
   const schema={type:"object",additionalProperties:false,properties:{
     title:{type:"string"},type:{type:"string"},theme:{type:"string"},duration:{type:"integer"},introduction:{type:"string"},
