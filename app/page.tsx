@@ -116,10 +116,10 @@ export default function Home(){
   }
   async function persistActivity(activity:Omit<Activity,"id"|"color">){
     const response=await fetch("/api/activities",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(activity)});
-    const data=await response.json();
+    const text=await response.text();let data:{activity?:Activity;error?:string}={};try{data=JSON.parse(text)}catch{throw new Error("L’enregistrement dans la bibliothèque a renvoyé une réponse illisible. Réessayez dans quelques instants.")}
     if(!response.ok)throw new Error(data.error||"L’activité n’a pas pu être enregistrée dans votre bibliothèque.");
     const created:Activity={...(data.activity||activity),id:data.activity?.id||Date.now(),color:formats.find(f=>f.name===activity.type)?.color||"mint"};
-    setActivities(current=>[created,...current]);return created;
+    setActivities(current=>current.some(item=>item.id===created.id)?current:[created,...current]);return created;
   }
   function deleteActivity(activity:Activity){setDeleteError("");setDeleteTarget(activity)}
   async function confirmDeleteActivity(){
@@ -178,8 +178,9 @@ export default function Home(){
       const response=await fetch("/api/ai/course",{method:"POST",credentials:"include",cache:"no-store",body:form});
       setGenerationStatus("Construction du cours, des tableaux, schémas et exercices…");
       const text=await response.text();let data:{activity?:Activity;mode?:string;error?:string}={};try{data=JSON.parse(text)}catch{throw new Error("Le service de création a renvoyé une réponse illisible. Réessayez dans quelques instants.")}if(!response.ok||!data.activity)throw new Error(data.error||"La création du cours n’a pas abouti.");
+      setGenerationStatus("Validation et enregistrement dans votre bibliothèque…");
       const activity=await persistActivity({...data.activity,source:"ai-course"});
-      setCreator(null);if(form.get("pdfA4")==="on")setPrintable(activity);notify(`${data.mode==="openai-documents"?"Documents analysés et contenu créé":"Contenu créé depuis vos consignes"} : ${activity.questions.length?`${activity.questions.length} éléments interactifs inclus`:"cours complet sans quiz"}`);
+      setCreator(null);setView("activities");if(form.get("pdfA4")==="on")setPrintable(activity);notify(`${data.mode==="openai-documents"?"Documents analysés et contenu enregistré":"Contenu enregistré depuis vos consignes"} : ${activity.questions.length?`${activity.questions.length} éléments interactifs inclus`:"cours complet sans quiz"}`);
     }catch(error){notify(error instanceof Error?error.message:"Impossible de générer le cours.")}finally{setGenerating(false);setGenerationStatus("")}
   }
   async function generateLesson(activity:Activity){
@@ -428,9 +429,9 @@ function CourseCreator({courseCreate,generating,generationStatus,back,cancel}:{c
     <label>Objectifs pédagogiques<textarea name="objective" defaultValue={analysis?.suggestedObjectives.join("\n")||""} key={analysis?.suggestedObjectives.join("|")||"objectives"} placeholder="Ex. Identifier les risques et appliquer le protocole."/></label>
     <label>{sourceMode==="prompt"?"Votre prompt de création":"Consignes complémentaires"}<textarea name="prompt" placeholder={sourceMode==="prompt"?"Ex. Crée un cours progressif sur le bio-nettoyage en EHPAD, avec des exemples de chambre, un tableau des couleurs de microfibres et un quiz final.":"Ex. Français simple, exemples professionnels et activités progressives."}/></label>
     <div className="form-row">{(outputs.includes("quiz")||outputs.includes("activity"))&&<label>Nombre d’éléments interactifs<select name="count" defaultValue="8"><option>5</option><option>8</option><option>10</option><option>12</option></select></label>}<label className="research-toggle compact"><input type="checkbox" name="research" defaultChecked/><span><b>Compléter avec des sources fiables</b><small>Les pages validées restent la base.</small></span></label></div>
-    <label className="pdf-after-create"><input type="checkbox" name="pdfA4" defaultChecked/><span><b>Ouvrir l’aperçu PDF A4 après la création</b><small>Le cours, le quiz et les activités sélectionnées seront réunis dans le même document imprimable.</small></span></label>
+    <label className="pdf-after-create"><input type="checkbox" name="pdfA4" defaultChecked/><span><b>Ouvrir l’aperçu PDF A4 après la création</b><small>L’activité sera d’abord enregistrée dans votre bibliothèque, puis son document imprimable s’ouvrira.</small></span></label>
     {generating&&<div className="generation-progress"><span className="loader dark"/><div><b>{generationStatus}</b><small>{sourceMode==="files"?"Documents validés → création → contrôle qualité":"Consignes → recherche → création → contrôle qualité"}</small></div></div>}
-    <div className="modal-actions"><button type="button" onClick={cancel}>Annuler</button><button className="primary" disabled={generating||analyzing||(sourceMode==="files"&&Boolean(files.length)&&!analysis)}>{generating?"Création en cours…":<><Icon name="wand" size={16}/>{sourceMode==="files"?"Générer depuis les sources":"Générer depuis mes consignes"}</>}</button></div>
+    <div className="library-save-note"><span>✓</span><div><b>Ajout automatique à la bibliothèque</b><small>Une fois la génération validée, votre cours et toutes ses activités seront enregistrés ensemble.</small></div></div><div className="modal-actions"><button type="button" onClick={cancel}>Annuler</button><button className="primary" disabled={generating||analyzing||(sourceMode==="files"&&Boolean(files.length)&&!analysis)}>{generating?"Création en cours…":<><Icon name="wand" size={16}/>{sourceMode==="files"?"Générer, valider et enregistrer":"Créer et ajouter à ma bibliothèque"}</>}</button></div>
   </form></>;
 }
 

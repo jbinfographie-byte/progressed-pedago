@@ -78,8 +78,11 @@ export async function POST(request:Request){
       }
       content.push({type:"input_text",text:files.length?`${prompt}\n\nIMPORTANT : les ${files.length} fichiers joints forment une seule base documentaire. Synthétise leurs informations, élimine les doublons, signale les contradictions dans la relecture qualité et respecte uniquement les pages, images ou sections conservées par le formateur.`:prompt});
       const research=form.get("research")==="on";
-      const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${config.apiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:config.model,store:false,reasoning:{effort:"medium"},max_output_tokens:18000,tools:research?[{type:"web_search"}]:[],input:[{role:"user",content}],text:{format:{type:"json_schema",name:"complete_training_course",strict:true,schema}}})});
-      if(!response.ok){let detail="";try{const payload=await response.json() as {error?:{message?:string}};detail=String(payload.error?.message||"")}catch{}if(response.status===401)throw new Error("Votre clé OpenAI n’est plus valide. Reconnectez-la dans Connexions.");if(response.status===429)throw new Error("OpenAI a atteint une limite de quota ou de facturation. Vérifiez votre projet OpenAI puis réessayez.");throw new Error(detail?`La création IA a échoué : ${detail.slice(0,220)}`:`La création IA du document a échoué (${response.status}).`)}
+      const requestOpenAI=(withResearch:boolean)=>fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${config.apiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:config.model,store:false,reasoning:{effort:"medium"},max_output_tokens:18000,...(withResearch?{tools:[{type:"web_search"}]}:{}),input:[{role:"user",content}],text:{format:{type:"json_schema",name:"complete_training_course",strict:true,schema}}})});
+      let response=await requestOpenAI(research);
+      let firstFailure="";
+      if(!response.ok&&research&&![401,429].includes(response.status)){try{const payload=await response.clone().json() as {error?:{message?:string}};firstFailure=String(payload.error?.message||"")}catch{}response=await requestOpenAI(false)}
+      if(!response.ok){let detail="";try{const payload=await response.json() as {error?:{message?:string}};detail=String(payload.error?.message||"")}catch{}if(response.status===401)throw new Error("Votre clé OpenAI n’est plus valide. Reconnectez-la dans Connexions.");if(response.status===429)throw new Error("OpenAI a atteint une limite de quota ou de facturation. Vérifiez votre projet OpenAI puis réessayez.");const useful=detail||firstFailure;throw new Error(useful?`La création IA a échoué : ${useful.slice(0,220)}`:`La création IA du document a échoué (${response.status}).`)}
       const data=await response.json() as {output_text?:string;output?:Array<{content?:Array<{text?:string}>}>};
       const raw=data.output_text||data.output?.flatMap(item=>item.content||[]).map(item=>item.text||"").join("")||"";if(!raw)throw new Error("OpenAI n’a renvoyé aucun contenu exploitable. Réduisez le nombre de pages ou relancez la création.");
       generated=JSON.parse(raw) as GeneratedCourse;mode=files.length?"openai-documents":"openai-prompt";
@@ -96,7 +99,7 @@ export async function POST(request:Request){
       const combinedInteractive=outputs.includes("quiz")&&outputs.includes("activity");const formatLabel=combinedInteractive?(index%2===0?"QUIZ":String(form.get("activityFormat")||"ACTIVITÉ").toUpperCase()):outputs.includes("activity")?String(form.get("activityFormat")||"ACTIVITÉ").toUpperCase():"QUIZ";
       return {...question,objective:`${formatLabel} — ${question.objective||"Vérifier les acquis"}`,options:shuffled,correct:target};
     }).filter(question=>question.options.length>=3&&question.explanation);
-    if(needsInteractiveContent&&generated.questions.length<3)return Response.json({error:"Le document ne contient pas assez d’éléments fiables pour produire le quiz ou l’activité demandé."},{status:422});
+    if(needsInteractiveContent&&generated.questions.length<3)return Response.json({error:"Le contenu généré ne contient pas encore assez de questions fiables. Simplifiez les consignes ou sélectionnez davantage de pages, puis relancez la création."},{status:422});
 
     const sourceDocuments:Array<{name:string;key:string;size:number;url:string;type:string}>=[];
     if(files.length&&env.BUCKET){
