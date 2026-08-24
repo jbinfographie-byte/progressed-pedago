@@ -9,7 +9,7 @@ export async function POST(request:Request){
     if(!validEmail(email)||!password)return Response.json({error:"E-mail ou mot de passe incorrect."},{status:401});
     const [trainer]=await getDb().select().from(trainers).where(eq(trainers.email,email)).limit(1);
     if(!trainer){await recordAuthEvent(email,"login_failed","Compte inconnu");return Response.json({error:"E-mail ou mot de passe incorrect."},{status:401})}
-    if(!trainer.emailVerified)return Response.json({error:"Votre adresse e-mail doit encore être validée.",verificationRequired:true,email},{status:403});
+    if(!trainer.emailVerified)return Response.json({error:"Votre accès attend encore le code unique de l’administrateur.",verificationRequired:true,email},{status:403});
     if(trainer.status!=="active")return Response.json({error:"Ce compte est désactivé. Contactez l’administrateur."},{status:403});
     if(trainer.lockedUntil&&new Date(trainer.lockedUntil)>new Date())return Response.json({error:"Compte temporairement verrouillé après plusieurs essais. Réessayez plus tard."},{status:423});
     const iterations=trainer.passwordVersion===1?120000:trainer.passwordVersion===2?210000:100000;

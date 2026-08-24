@@ -1,15 +1,15 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { appSettings, authEvents, trainerSessions, trainers } from "@/db/schema";
-import { hashCode, makeSalt, recordAuthEvent, requireAdmin, validPassword } from "@/app/auth";
-import { emailIsConfigured } from "@/app/email";
+import { hashCode, makeSalt, recordAuthEvent, requireAdmin, sha256, validPassword } from "@/app/auth";
+import { emailIsConfigured, sendAccessCodeToAdmin } from "@/app/email";
 import { getOpenAIStatus, removeOpenAIKey, saveOpenAIKey } from "@/app/ai-config";
 
 export async function GET(request:Request){
   try{
     const admin=await requireAdmin(request);if(!admin)return Response.json({error:"Accès administrateur requis."},{status:403});
     const [accounts,events,settings,aiStatus]=await Promise.all([
-      getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,emailVerified:trainers.emailVerified,failedAttempts:trainers.failedAttempts,lockedUntil:trainers.lockedUntil,lastLoginAt:trainers.lastLoginAt,mustChangePassword:trainers.mustChangePassword,createdAt:trainers.createdAt}).from(trainers).orderBy(desc(trainers.createdAt)),
+      getDb().select({id:trainers.id,email:trainers.email,role:trainers.role,status:trainers.status,emailVerified:trainers.emailVerified,verificationExpiresAt:trainers.verificationExpiresAt,failedAttempts:trainers.failedAttempts,lockedUntil:trainers.lockedUntil,lastLoginAt:trainers.lastLoginAt,mustChangePassword:trainers.mustChangePassword,createdAt:trainers.createdAt}).from(trainers).orderBy(desc(trainers.createdAt)),
       getDb().select().from(authEvents).orderBy(desc(authEvents.createdAt)).limit(50),
       getDb().select().from(appSettings),
       getOpenAIStatus(admin.id),
@@ -22,10 +22,23 @@ export async function PATCH(request:Request){
   try{
     const admin=await requireAdmin(request);if(!admin)return Response.json({error:"Accès administrateur requis."},{status:403});
     const body=await request.json() as Record<string,unknown>;const action=String(body.action||"");
+    if(action==="issue-access-code"){
+      const trainerId=Number(body.trainerId);
+      const [target]=await getDb().select({id:trainers.id,email:trainers.email,emailVerified:trainers.emailVerified,role:trainers.role}).from(trainers).where(eq(trainers.id,trainerId)).limit(1);
+      if(!target||target.role!=="trainer")return Response.json({error:"Demande formateur introuvable."},{status:404});
+      if(target.emailVerified)return Response.json({error:"Ce formateur possède déjà un accès autorisé."},{status:409});
+      const alphabet="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";const random=crypto.getRandomValues(new Uint8Array(10));const code=Array.from(random,byte=>alphabet[byte%alphabet.length]).join("");
+      const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();
+      await getDb().update(trainers).set({status:"pending",verificationHash:await sha256(`${target.email}:${code}`),verificationExpiresAt:expiresAt,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,target.id));
+      const sent=await sendAccessCodeToAdmin(admin.email,target.email,code,expiresAt);
+      await recordAuthEvent(target.email,"access_code_issued",`Par ${admin.email} • valable 7 jours`);
+      return Response.json({ok:true,code,email:target.email,expiresAt,emailSent:sent.ok,message:sent.ok?"Le code a aussi été envoyé à votre adresse administrateur.":"Copiez ce code maintenant : il ne sera plus affiché ensuite."});
+    }
     if(action==="status"){
       const trainerId=Number(body.trainerId);const status=body.status==="inactive"?"inactive":"active";
       if(trainerId===admin.id&&status==="inactive")return Response.json({error:"Vous ne pouvez pas désactiver votre propre compte."},{status:400});
-      const [target]=await getDb().select({email:trainers.email}).from(trainers).where(eq(trainers.id,trainerId)).limit(1);if(!target)return Response.json({error:"Compte introuvable."},{status:404});
+      const [target]=await getDb().select({email:trainers.email,emailVerified:trainers.emailVerified}).from(trainers).where(eq(trainers.id,trainerId)).limit(1);if(!target)return Response.json({error:"Compte introuvable."},{status:404});
+      if(status==="active"&&!target.emailVerified)return Response.json({error:"Ce compte doit d’abord valider le code unique administrateur."},{status:409});
       await getDb().update(trainers).set({status,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,trainerId));
       if(status==="inactive")await getDb().delete(trainerSessions).where(eq(trainerSessions.trainerId,trainerId));
       await recordAuthEvent(target.email,status==="active"?"account_enabled":"account_disabled",`Par ${admin.email}`);return Response.json({ok:true});
