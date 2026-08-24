@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { accessInvitations, appSettings, authEvents, trainerSessions, trainers } from "@/db/schema";
 import { hashCode, makeSalt, normalizeEmail, recordAuthEvent, requireAdmin, sha256, validEmail, validPassword } from "@/app/auth";
-function accessMailto(email:string,code:string,expiresAt:string){const subject="Invitation à rejoindre Progressed Pédago";const body=`Bonjour,\n\nJe vous invite à rejoindre l’espace formateur Progressed Pédago.\n\nVotre code d’activation : ${code}\n\nCe code est personnel et valable jusqu’au ${new Date(expiresAt).toLocaleString("fr-FR")}. Saisissez-le lors de la création de votre espace formateur.\n\nCordialement,\nL’administrateur Progressed Pédago`;return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
+function accessMailDraft(email:string,code:string,expiresAt:string){const subject="Invitation à rejoindre Progressed Pédago";const body=`Bonjour,\n\nJe vous invite à rejoindre l’espace formateur Progressed Pédago.\n\nVotre code d’activation : ${code}\n\nCe code est personnel et valable jusqu’au ${new Date(expiresAt).toLocaleString("fr-FR")}. Saisissez-le lors de la création de votre espace formateur.\n\nCordialement,\nL’administrateur Progressed Pédago`;return {emailSubject:subject,emailBody:body}}
 
 export async function GET(request:Request){
   try{
@@ -27,7 +27,7 @@ export async function PATCH(request:Request){
       const expiresAt=new Date(Date.now()+7*24*60*60*1000).toISOString();const codeHash=await sha256(`${email}:${code}`);const now=new Date().toISOString();
       await getDb().insert(accessInvitations).values({email,codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}).onConflictDoUpdate({target:accessInvitations.email,set:{codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}});
       if(existing)await getDb().update(trainers).set({status:"pending",verificationHash:codeHash,verificationExpiresAt:expiresAt,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,existing.id));
-      await recordAuthEvent(email,"invitation_created",`Par ${admin.email} • message préparé • valable 7 jours`);return Response.json({ok:true,email,code,expiresAt,mailtoUrl:accessMailto(email,code,expiresAt),message:"L’autorisation est enregistrée. Votre message est prêt à être envoyé manuellement."});
+      await recordAuthEvent(email,"invitation_created",`Par ${admin.email} • message préparé • valable 7 jours`);return Response.json({ok:true,email,code,expiresAt,...accessMailDraft(email,code,expiresAt),message:"L’autorisation est enregistrée. Copiez les informations ci-dessous dans votre messagerie."});
     }
     if(action==="issue-access-code"){
       const trainerId=Number(body.trainerId);
@@ -40,7 +40,7 @@ export async function PATCH(request:Request){
       const codeHash=await sha256(`${target.email}:${code}`);await getDb().update(trainers).set({status:"pending",verificationHash:codeHash,verificationExpiresAt:expiresAt,failedAttempts:0,lockedUntil:null}).where(eq(trainers.id,target.id));
       const now=new Date().toISOString();await getDb().insert(accessInvitations).values({email:target.email,codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}).onConflictDoUpdate({target:accessInvitations.email,set:{codeHash,expiresAt,usedAt:null,createdBy:admin.email,createdAt:now}});
       await recordAuthEvent(target.email,"access_code_issued",`Par ${admin.email} • message préparé • valable 7 jours`);
-      return Response.json({ok:true,code,email:target.email,expiresAt,mailtoUrl:accessMailto(target.email,code,expiresAt),message:"Le code est enregistré. Le message d’autorisation est prêt à être envoyé manuellement."});
+      return Response.json({ok:true,code,email:target.email,expiresAt,...accessMailDraft(target.email,code,expiresAt),message:"Le code est enregistré. Copiez les informations ci-dessous dans votre messagerie."});
     }
     if(action==="status"){
       const trainerId=Number(body.trainerId);const status=body.status==="inactive"?"inactive":"active";
