@@ -88,6 +88,9 @@ export default function Home(){
   const [printable,setPrintable]=useState<Activity|null>(null);
   const [trainer,setTrainer]=useState<Trainer|null>(null);
   const [authLoading,setAuthLoading]=useState(true);
+  const [deleteTarget,setDeleteTarget]=useState<Activity|null>(null);
+  const [deleting,setDeleting]=useState(false);
+  const [deleteError,setDeleteError]=useState("");
 
   useEffect(()=>{fetch("/api/auth/session").then(async response=>{const data=await response.json();setTrainer(response.ok?data.trainer:null)}).catch(()=>setTrainer(null)).finally(()=>setAuthLoading(false))},[]);
   useEffect(()=>{if(!trainer)return; Promise.all([
@@ -115,11 +118,11 @@ export default function Home(){
     const created:Activity={...(data.activity||activity),id:data.activity?.id||Date.now(),color:formats.find(f=>f.name===activity.type)?.color||"mint"};
     setActivities(current=>[created,...current]);return created;
   }
-  async function deleteActivity(activity:Activity){
+  function deleteActivity(activity:Activity){setDeleteError("");setDeleteTarget(activity)}
+  async function confirmDeleteActivity(){
+    const activity=deleteTarget;if(!activity)return;
     const kind=activity.source==="external"?"ressource":"activité";
-    const linkedFile=Boolean(activity.imageKey||activity.lesson?.sourceDocument?.key);
-    const confirmed=window.confirm(`Voulez-vous vraiment supprimer cette activité ?\n\n« ${activity.title} »${linkedFile?" et son fichier associé seront supprimés":" sera supprimée"}. Cette action est irréversible.`);
-    if(!confirmed)return;
+    setDeleting(true);setDeleteError("");
     try{
       const response=await fetch("/api/activities",{method:"DELETE",headers:{"Content-Type":"application/json"},body:JSON.stringify(activity.source?{id:activity.id}:{starterId:activity.id})});
       const data=await response.json();
@@ -127,10 +130,14 @@ export default function Home(){
       setActivities(current=>current.filter(item=>!(item.id===activity.id&&item.title===activity.title)));
       setPlaying(current=>current?.id===activity.id&&current.title===activity.title?null:current);
       setPrintable(current=>current?.id===activity.id&&current.title===activity.title?null:current);
+      setDeleteTarget(null);
       notify(data.deletedFile?"Activité et fichier supprimés":kind==="ressource"?"Ressource supprimée":"Activité supprimée");
-    }catch(error){notify(error instanceof Error?error.message:"Suppression impossible.")}
+    }catch(error){setDeleteError(error instanceof Error?error.message:"Suppression impossible.")}finally{setDeleting(false)}
   }
   function start(activity:Activity){
+    const root=document.documentElement as HTMLElement&{webkitRequestFullscreen?:()=>Promise<void>|void};
+    const doc=document as Document&{webkitFullscreenElement?:Element|null};
+    if(!document.fullscreenElement&&!doc.webkitFullscreenElement){const request=root.requestFullscreen||root.webkitRequestFullscreen;if(request){try{Promise.resolve(request.call(root)).catch(()=>{})}catch{/* Le bouton dans l’activité permet de réessayer. */}}}
     const base=Math.floor(Math.random()*4);
     const questions=activity.questions.map((q,index)=>{
       const correctText=q.options[q.correct];const distractors=q.options.filter((_,i)=>i!==q.correct);
@@ -234,8 +241,9 @@ export default function Home(){
       {view==="admin"&&trainer.role==="admin"&&<AdminPanel/>}
     </main>
 
-    {creator&&<Creator mode={creator} setMode={setCreator} manualCreate={manualCreate} aiCreate={aiCreate} courseCreate={courseCreate} externalCreate={externalCreate} generating={generating} generationStatus={generationStatus}/>}
-    {playing&&<Player activity={playing} step={step} selected={selected} setSelected={setSelected} finish={finish} score={score} next={nextQuestion} close={()=>setPlaying(null)} save={saveResult} saved={saved} generateLesson={generateLesson}/>}
+    {creator&&<Creator mode={creator} setMode={setCreator} manualCreate={manualCreate} aiCreate={aiCreate} courseCreate={courseCreate} externalCreate={externalCreate} generating={generating} generationStatus={generationStatus}/>} 
+    {playing&&<Player activity={playing} step={step} selected={selected} setSelected={setSelected} finish={finish} score={score} next={nextQuestion} close={()=>setPlaying(null)} save={saveResult} saved={saved} generateLesson={generateLesson}/>} 
+    {deleteTarget&&<DeleteConfirmation activity={deleteTarget} deleting={deleting} error={deleteError} onCancel={()=>{if(!deleting){setDeleteTarget(null);setDeleteError("")}}} onConfirm={confirmDeleteActivity}/>} 
     {toast&&<div className="toast"><span>✓</span>{toast}</div>}
   </div>{printable&&<PrintPreview activity={printable} onClose={()=>setPrintable(null)} generateLesson={generateLesson}/>}</>
 }
@@ -299,6 +307,10 @@ function eventLabel(event:string){return ({account_created:"Compte créé",verif
 
 function ActivityLibrary({activities,start,print,remove,onCreate}:{activities:Activity[];start:(a:Activity)=>void;print:(a:Activity)=>void;remove:(a:Activity)=>void;onCreate:()=>void}){
   return <section className="section-block games-section"><div className="section-heading"><div><span className="kicker">VOTRE BIBLIOTHÈQUE</span><h2>Activités prêtes à animer</h2></div><button className="text-button" onClick={onCreate}>+ Nouvelle activité</button></div><div className="game-grid">{activities.map(a=><article className="game-card" key={`${a.id}-${a.title}`}><div className={`game-cover ${a.color} ${a.coverImageUrl?"with-image":""}`}>{a.coverImageUrl&&<img src={a.coverImageUrl} alt={a.imageAlt||`Illustration de ${a.title}`}/>}<span className="game-type">{a.source==="ai"?"✦ Créé avec l’IA":a.type}</span>{a.source==="ai"&&<span className={`quality-badge ${(a.quality?.score||0)>=85?"verified":"draft"}`}>{(a.quality?.score||0)>=85?"✓ Vérifié":"À relire"}</span>}<div className="game-symbol">{!a.coverImageUrl&&(formats.find(f=>f.name===a.type)?.icon||"▶")}</div><button className="play-button" onClick={()=>start(a)} aria-label={`Jouer à ${a.title} en grand écran`}><Icon name="expand" size={17}/></button></div><div className="game-content"><span>{a.theme}</span><h3>{a.title}</h3>{a.sources?.length?<p className="source-count">{a.sources.length} source{a.sources.length>1?"s":""} consultée{a.sources.length>1?"s":""} • Qualité {a.quality?.score||"—"}/100</p>:null}<div className="game-meta"><small>{a.duration} min</small><small>{a.questions.length} étapes</small><div className="game-actions"><button className="pdf-button" onClick={()=>print(a)} aria-label={`Générer ${a.title} au format PDF A4`}><Icon name="download" size={14}/>PDF A4</button><button className="delete-activity-button" onClick={()=>remove(a)} aria-label={`Supprimer ${a.title}`} title="Supprimer l’activité"><Icon name="trash" size={14}/></button></div></div></div></article>)}</div></section>
+}
+
+function DeleteConfirmation({activity,deleting,error,onCancel,onConfirm}:{activity:Activity;deleting:boolean;error:string;onCancel:()=>void;onConfirm:()=>void}){
+  return <div className="modal-backdrop delete-confirm-backdrop" onMouseDown={onCancel}><section className="modal delete-confirm" onMouseDown={event=>event.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-description"><span className="delete-confirm-icon"><Icon name="trash" size={22}/></span><p className="eyebrow">CONFIRMATION DE SUPPRESSION</p><h2 id="delete-confirm-title">Voulez-vous vraiment supprimer cette activité&nbsp;?</h2><p id="delete-confirm-description">L’activité <b>« {activity.title} »</b>{activity.imageKey||activity.lesson?.sourceDocument?.key?" et son fichier associé":""} sera supprimée définitivement. Cette action est irréversible.</p>{error&&<div className="delete-confirm-error">{error}</div>}<div className="delete-confirm-actions"><button type="button" onClick={onCancel} disabled={deleting}>Annuler</button><button className="confirm-delete-button" type="button" onClick={onConfirm} disabled={deleting}>{deleting?<><span className="loader"/>Suppression…</>:<><Icon name="trash" size={15}/>Oui, supprimer l’activité</>}</button></div></section></div>
 }
 
 type PrintOptions={showLesson:boolean;showResultZone:boolean;showSolutions:boolean;showExplanations:boolean;showSources:boolean;showImage:boolean};
@@ -410,13 +422,15 @@ function CourseLessonDetails({lesson}:{lesson:Lesson}){
 function Player({activity,step,selected,setSelected,finish,score,next,close,save,saved,generateLesson}:{activity:Activity;step:number;selected:number|null;setSelected:(n:number)=>void;finish:boolean;score:number;next:()=>void;close:()=>void;save:(e:FormEvent<HTMLFormElement>)=>void;saved:boolean;generateLesson:(activity:Activity)=>Promise<Lesson>}){
   const q=activity.questions[step]||sampleQuestions[0];
   const [lesson,setLesson]=useState(activity.lesson||null);const [showLesson,setShowLesson]=useState(activity.type==="Cours complet");const [lessonLoading,setLessonLoading]=useState(false);const [lessonError,setLessonError]=useState("");
+  const playerRef=useRef<HTMLElement|null>(null);const [isFullscreen,setIsFullscreen]=useState(false);const [fullscreenError,setFullscreenError]=useState("");
   useEffect(()=>{setLesson(activity.lesson||null)},[activity.lesson]);
-  const leave=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});close()};
-  const expand=()=>document.documentElement.requestFullscreen?.().catch(()=>{});
+  useEffect(()=>{const sync=()=>{const doc=document as Document&{webkitFullscreenElement?:Element|null};setIsFullscreen(Boolean(document.fullscreenElement||doc.webkitFullscreenElement))};document.addEventListener("fullscreenchange",sync);document.addEventListener("webkitfullscreenchange",sync as EventListener);sync();return()=>{document.removeEventListener("fullscreenchange",sync);document.removeEventListener("webkitfullscreenchange",sync as EventListener)}},[]);
+  const leave=()=>{const doc=document as Document&{webkitFullscreenElement?:Element|null;webkitExitFullscreen?:()=>Promise<void>|void};if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else if(doc.webkitFullscreenElement)try{doc.webkitExitFullscreen?.()}catch{}close()};
+  async function expand(){setFullscreenError("");const doc=document as Document&{webkitFullscreenElement?:Element|null;webkitExitFullscreen?:()=>Promise<void>|void};const target=playerRef.current as (HTMLElement&{webkitRequestFullscreen?:()=>Promise<void>|void})|null;try{if(document.fullscreenElement){await document.exitFullscreen();return}if(doc.webkitFullscreenElement){await Promise.resolve(doc.webkitExitFullscreen?.());return}const request=target?.requestFullscreen||target?.webkitRequestFullscreen;if(!request)throw new Error("Mode indisponible");await Promise.resolve(request.call(target))}catch{setFullscreenError("Le plein écran a été bloqué. Cliquez de nouveau ou autorisez le plein écran dans votre navigateur.")}}
   async function toggleLesson(){if(lesson){setShowLesson(current=>!current);return}setLessonLoading(true);setLessonError("");setShowLesson(true);try{setLesson(await generateLesson(activity))}catch(error){setLessonError(error instanceof Error?error.message:"Le cours n’a pas pu être généré.")}finally{setLessonLoading(false)}}
-  return <div className="modal-backdrop play-bg" onMouseDown={leave}><section className="modal play-modal" onMouseDown={event=>event.stopPropagation()} role="dialog" aria-modal="true"><button className="modal-close" onClick={leave}>×</button>
+  return <div className="modal-backdrop play-bg" onMouseDown={leave}><section ref={playerRef} className="modal play-modal" onMouseDown={event=>event.stopPropagation()} role="dialog" aria-modal="true"><button className="modal-close" onClick={leave}>×</button>
     {!finish?<div className={`play-stage ${activity.coverImageUrl?"has-visual":""}`}>
-      <div className="play-head"><span className="question-tag mint">{activity.type}</span><div><span>{step+1} / {activity.questions.length}</span><button className="lesson-toggle" onClick={toggleLesson} disabled={lessonLoading}><Icon name="book" size={16}/>{lessonLoading?"Génération…":showLesson?"Masquer le cours":lesson?"Voir le cours":"Générer le cours avec l’IA"}</button><button onClick={expand} title="Afficher en plein écran"><Icon name="expand" size={16}/>Plein écran</button></div></div>
+      <div className="play-head"><span className="question-tag mint">{activity.type}</span><div><span>{step+1} / {activity.questions.length}</span><button className="lesson-toggle" onClick={toggleLesson} disabled={lessonLoading}><Icon name="book" size={16}/>{lessonLoading?"Génération…":showLesson?"Masquer le cours":lesson?"Voir le cours":"Générer le cours avec l’IA"}</button><button className="fullscreen-toggle" onClick={expand} title={isFullscreen?"Quitter le plein écran":"Afficher en plein écran"}><Icon name="expand" size={16}/>{isFullscreen?"Quitter le plein écran":"Plein écran"}</button></div></div>{fullscreenError&&<div className="fullscreen-error">{fullscreenError}</div>}
       <div className="progress"><i style={{width:`${(step+1)/activity.questions.length*100}%`}}/></div>
       {showLesson&&<section className="learner-lesson"><div className="lesson-heading"><span><Icon name="wand" size={17}/></span><div><small>COURS ET EXPLICATIONS</small><h2>{lesson?.title||"Création du cours en cours…"}</h2></div><button onClick={()=>setShowLesson(false)}>Continuer l’exercice →</button></div>{lessonLoading?<div className="lesson-loading"><span className="loader dark"/>L’intelligence artificielle prépare une explication simple et structurée…</div>:lesson?<><div className="lesson-progress-path"><span className="done">1<small>Découvrir</small></span><i/><span className="active">2<small>Comprendre</small></span><i/><span>3<small>Jouer</small></span><i/><span>4<small>Retenir</small></span></div>{lesson.hook&&<div className="lesson-hook"><b>Question de départ</b><p>{lesson.hook}</p></div>}<p className="lesson-summary">{lesson.summary}</p><div className="lesson-columns"><div><h3>Points essentiels</h3><ul>{lesson.keyPoints.map(point=><li key={point}>{point}</li>)}</ul></div><div><h3>Méthode à retenir</h3><ol>{lesson.steps.map(item=><li key={item}>{item}</li>)}</ol></div></div><div className="lesson-play-cards">{lesson.miniChallenge&&<article><span>⚡</span><div><b>Défi minute</b><p>{lesson.miniChallenge}</p></div></article>}{lesson.memoryAid&&<article><span>🧠</span><div><b>Astuce mémo</b><p>{lesson.memoryAid}</p></div></article>}</div><div className="lesson-tip"><b>Conseil pour réussir</b><p>{lesson.learnerTip}</p></div><CourseLessonDetails lesson={lesson}/></>:null}{lessonError&&<div className="lesson-error">{lessonError}<button onClick={toggleLesson}>Réessayer</button></div>}</section>}
       {activity.coverImageUrl&&<img className="quiz-image" src={activity.coverImageUrl} alt={activity.imageAlt||`Illustration de ${activity.title}`}/>}<div className="question-zone">{q.objective&&<p className="question-objective">OBJECTIF : {q.objective}</p>}<h2>{q.question}</h2><div className="answers">{q.options.map((answer,index)=><button className={selected===index?(index===q.correct?"correct":"wrong"):""} key={answer} onClick={()=>setSelected(index)}><span>{String.fromCharCode(65+index)}</span>{answer}</button>)}</div>{selected!==null&&<><div className={`feedback ${selected===q.correct?"good":"retry"}`}><strong>{selected===q.correct?"Bonne réponse !":"Pas tout à fait"} — Explication</strong><p>{q.explanation}</p></div>{q.sourceIndexes?.length?<div className="question-sources"><b>Sources :</b>{q.sourceIndexes.map(index=>activity.sources?.[index]).filter(Boolean).map((source,index)=><a key={source!.url} href={source!.url} target="_blank" rel="noreferrer">{index+1}. {source!.publisher||source!.title}</a>)}</div>:null}</>}<button className="next-btn" disabled={selected===null} onClick={next}>{step===activity.questions.length-1?"Voir mon résultat":"Question suivante"} →</button></div>
