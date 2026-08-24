@@ -6,6 +6,16 @@ type Question={ question:string; options:string[]; correct:number; explanation:s
 type Lesson={ title:string; summary:string; keyPoints:string[]; steps:string[]; learnerTip:string; hook:string; miniChallenge:string; memoryAid:string };
 type Generated={ title:string; type:string; theme:string; duration:number; introduction:string; lesson:Lesson; questions:Question[]; sources:Source[]; quality:{ score:number; factualConsistency:boolean; noAmbiguity:boolean; levelFit:boolean; cleanFrench:boolean; duplicateFree:boolean; reviewSummary:string } };
 
+function formatGuide(type:string){
+  if(["Mots mêlés","Pendu","Épeler le mot","Mots croisés","Tapez la réponse","Anagramme"].includes(type))return "Chaque question conduit à un mot ou une expression courte, sans variante ambiguë. La bonne réponse exacte est l’option indiquée par correct ; les autres options servent uniquement à la correction automatique.";
+  if(["Retournez les tuiles","Fiches de révision","Cartes mémoire","Cartes aléatoires"].includes(type))return "Chaque question est le recto de la carte et l’option correcte est son verso. Le recto doit être bref et le verso mémorisable en une lecture.";
+  if(["Classement par rang","Démêler","Glisser-déposer"].includes(type))return "Chaque option propose un ordre ou un classement complet ; une seule séquence est exacte et vérifiable.";
+  if(["Apparier","Paire ou pas de paire","Diagramme étiqueté"].includes(type))return "Chaque question demande une association ou une étiquette précise ; une seule paire ou position est correcte.";
+  if(type==="Vrai ou faux")return "Utilise exactement deux options, Vrai puis Faux, et indique l’index correct sans ambiguïté.";
+  if(["Quiz télévisé","Poursuite dans le labyrinthe","Fruits volants"].includes(type))return "Crée des questions courtes, lisibles rapidement en projection, avec des réponses brèves et une difficulté progressive.";
+  return "Respecte fidèlement la mécanique choisie et garde une seule réponse incontestable par élément.";
+}
+
 function fallback(theme:string,type:string,count:number):Generated {
   const topic=theme.trim()||"les bonnes pratiques professionnelles";
   const base=[
@@ -83,7 +93,6 @@ Si les sources disponibles sont insuffisantes, réduis la portée des questions 
     const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"Authorization":`Bearer ${config.apiKey}`,"Content-Type":"application/json"},body:JSON.stringify({
       model:config.model,
       store:false,
-      reasoning:{effort:"medium"},
       tools:body.research===false?[]:[{type:"web_search"}],
       tool_choice:body.research===false?"auto":"required",
       include:body.research===false?[]:["web_search_call.action.sources"],
@@ -93,6 +102,7 @@ OBJECTIF PÉDAGOGIQUE : ${body.objective||"Faire comprendre et appliquer les not
 PUBLIC : ${body.audience||"Adultes en formation professionnelle"}
 NIVEAU : ${body.level||"Intermédiaire"}
 FORMAT : ${type}
+RÈGLE DE LA MÉCANIQUE : ${formatGuide(type)}
 NOMBRE EXACT DE QUESTIONS : ${count}
 PRÉCISIONS DU FORMATEUR : ${body.prompt||"Aucune"}
 STYLE DU COURS : ${body.lessonStyle||"Ludique avec défi"}
