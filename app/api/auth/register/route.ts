@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { accessInvitations, appSettings, trainers } from "@/db/schema";
@@ -12,6 +13,7 @@ export async function POST(request:Request){
     const first=await getDb().select({id:trainers.id}).from(trainers).limit(1);
     const salt=makeSalt();const passwordHash=await hashCode(password,salt);
     if(!first.length){
+      const designatedAdmin=normalizeEmail((env as unknown as {ADMIN_EMAIL?:string}).ADMIN_EMAIL);if(!designatedAdmin||email!==designatedAdmin)return Response.json({error:"L’initialisation du compte administrateur est verrouillée. Contactez le propriétaire du site."},{status:403});
       const [trainer]=await getDb().insert(trainers).values({email,codeHash:passwordHash,codeSalt:salt,role:"admin",status:"active",emailVerified:true,passwordVersion:3,mustChangePassword:false}).returning({id:trainers.id,email:trainers.email,role:trainers.role,mustChangePassword:trainers.mustChangePassword});
       await recordAuthEvent(email,"account_created","Premier compte administrateur validé");const session=await createSession(trainer.id);
       return Response.json({trainer},{status:201,headers:{"set-cookie":sessionHeader(session.token,session.expires)}});
