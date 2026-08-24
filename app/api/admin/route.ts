@@ -13,7 +13,7 @@ export async function GET(request:Request){
       getDb().select().from(appSettings),
       getDb().select({id:accessInvitations.id,email:accessInvitations.email,expiresAt:accessInvitations.expiresAt,usedAt:accessInvitations.usedAt,createdBy:accessInvitations.createdBy,createdAt:accessInvitations.createdAt}).from(accessInvitations).orderBy(desc(accessInvitations.createdAt)).limit(50),
     ]);
-    return Response.json({accounts,events,invitations,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false"}});
+    return Response.json({accounts,events,invitations,settings:{registrationEnabled:settings.find(s=>s.key==="registration_enabled")?.value!=="false"}},{headers:{"Cache-Control":"no-store"}});
   }catch{return Response.json({error:"Impossible de charger l’administration."},{status:500})}
 }
 
