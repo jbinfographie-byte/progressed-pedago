@@ -12,6 +12,7 @@ function formatGuide(type:string){
   if(["Classement par rang","Démêler","Glisser-déposer"].includes(type))return "Chaque option propose un ordre ou un classement complet ; une seule séquence est exacte et vérifiable.";
   if(["Apparier","Paire ou pas de paire","Diagramme étiqueté"].includes(type))return "Chaque question demande une association ou une étiquette précise ; une seule paire ou position est correcte.";
   if(type==="Vrai ou faux")return "Utilise exactement deux options, Vrai puis Faux, et indique l’index correct sans ambiguïté.";
+  if(type==="Roue du défi")return "Chaque question introduit une famille de défis. Les options sont 3 à 6 missions distinctes, courtes, réalisables et toutes pédagogiquement valables : la roue en tire une au hasard, puis l’apprenant indique s’il a réussi. Utilise correct=0 pour permettre l’auto-évaluation et rédige une explication qui aide à réussir les missions.";
   if(["Quiz télévisé","Poursuite dans le labyrinthe","Fruits volants"].includes(type))return "Crée des questions courtes, lisibles rapidement en projection, avec des réponses brèves et une difficulté progressive.";
   return "Respecte fidèlement la mécanique choisie et garde une seule réponse incontestable par élément.";
 }
