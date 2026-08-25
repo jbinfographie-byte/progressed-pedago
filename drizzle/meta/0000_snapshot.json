@@ -107,8 +107,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "activities": {
-      "name": "activities",
+    "pedago_activities": {
+      "name": "pedago_activities",
       "columns": {
         "id": {
           "name": "id",
@@ -256,8 +256,8 @@
         }
       },
       "indexes": {
-        "idx_activities_owner_status_date": {
-          "name": "idx_activities_owner_status_date",
+        "idx_pedago_activities_owner_status_date": {
+          "name": "idx_pedago_activities_owner_status_date",
           "columns": [
             "trainer_id",
             "status",
@@ -265,8 +265,8 @@
           ],
           "isUnique": false
         },
-        "idx_activities_owner_type": {
-          "name": "idx_activities_owner_type",
+        "idx_pedago_activities_owner_type": {
+          "name": "idx_pedago_activities_owner_type",
           "columns": [
             "trainer_id",
             "type"
@@ -275,9 +275,9 @@
         }
       },
       "foreignKeys": {
-        "activities_trainer_id_users_id_fk": {
-          "name": "activities_trainer_id_users_id_fk",
-          "tableFrom": "activities",
+        "pedago_activities_trainer_id_users_id_fk": {
+          "name": "pedago_activities_trainer_id_users_id_fk",
+          "tableFrom": "pedago_activities",
           "tableTo": "users",
           "columnsFrom": [
             "trainer_id"
@@ -294,11 +294,11 @@
       "checkConstraints": {
         "ck_activities_duration_positive": {
           "name": "ck_activities_duration_positive",
-          "value": "\"activities\".\"duration_minutes\" > 0"
+          "value": "\"pedago_activities\".\"duration_minutes\" > 0"
         },
         "ck_activities_quality_range": {
           "name": "ck_activities_quality_range",
-          "value": "\"activities\".\"quality_score\" BETWEEN 0 AND 100"
+          "value": "\"pedago_activities\".\"quality_score\" BETWEEN 0 AND 100"
         }
       }
     },
@@ -354,10 +354,10 @@
         }
       },
       "foreignKeys": {
-        "activity_contents_activity_id_activities_id_fk": {
-          "name": "activity_contents_activity_id_activities_id_fk",
+        "activity_contents_activity_id_pedago_activities_id_fk": {
+          "name": "activity_contents_activity_id_pedago_activities_id_fk",
           "tableFrom": "activity_contents",
-          "tableTo": "activities",
+          "tableTo": "pedago_activities",
           "columnsFrom": [
             "activity_id"
           ],
@@ -372,8 +372,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "app_settings": {
-      "name": "app_settings",
+    "pedago_app_settings": {
+      "name": "pedago_app_settings",
       "columns": {
         "key": {
           "name": "key",
@@ -407,9 +407,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "app_settings_updated_by_users_id_fk": {
-          "name": "app_settings_updated_by_users_id_fk",
-          "tableFrom": "app_settings",
+        "pedago_app_settings_updated_by_users_id_fk": {
+          "name": "pedago_app_settings_updated_by_users_id_fk",
+          "tableFrom": "pedago_app_settings",
           "tableTo": "users",
           "columnsFrom": [
             "updated_by"
@@ -810,10 +810,10 @@
         }
       },
       "foreignKeys": {
-        "learner_results_activity_id_activities_id_fk": {
-          "name": "learner_results_activity_id_activities_id_fk",
+        "learner_results_activity_id_pedago_activities_id_fk": {
+          "name": "learner_results_activity_id_pedago_activities_id_fk",
           "tableFrom": "learner_results",
-          "tableTo": "activities",
+          "tableTo": "pedago_activities",
           "columnsFrom": [
             "activity_id"
           ],
@@ -901,10 +901,10 @@
         }
       },
       "foreignKeys": {
-        "lessons_activity_id_activities_id_fk": {
-          "name": "lessons_activity_id_activities_id_fk",
+        "lessons_activity_id_pedago_activities_id_fk": {
+          "name": "lessons_activity_id_pedago_activities_id_fk",
           "tableFrom": "lessons",
-          "tableTo": "activities",
+          "tableTo": "pedago_activities",
           "columnsFrom": [
             "activity_id"
           ],
@@ -1018,10 +1018,10 @@
         }
       },
       "foreignKeys": {
-        "questions_activity_id_activities_id_fk": {
-          "name": "questions_activity_id_activities_id_fk",
+        "questions_activity_id_pedago_activities_id_fk": {
+          "name": "questions_activity_id_pedago_activities_id_fk",
           "tableFrom": "questions",
-          "tableTo": "activities",
+          "tableTo": "pedago_activities",
           "columnsFrom": [
             "activity_id"
           ],
@@ -1196,10 +1196,10 @@
         }
       },
       "foreignKeys": {
-        "sources_activity_id_activities_id_fk": {
-          "name": "sources_activity_id_activities_id_fk",
+        "sources_activity_id_pedago_activities_id_fk": {
+          "name": "sources_activity_id_pedago_activities_id_fk",
           "tableFrom": "sources",
-          "tableTo": "activities",
+          "tableTo": "pedago_activities",
           "columnsFrom": [
             "activity_id"
           ],

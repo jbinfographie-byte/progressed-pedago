@@ -12,7 +12,7 @@ CREATE TABLE `activation_codes` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_activation_codes_hash` ON `activation_codes` (`code_hash`);--> statement-breakpoint
 CREATE INDEX `idx_activation_codes_trainer_expiry` ON `activation_codes` (`trainer_id`,`expires_at`);--> statement-breakpoint
-CREATE TABLE `activities` (
+CREATE TABLE `pedago_activities` (
 	`id` text PRIMARY KEY NOT NULL,
 	`trainer_id` text NOT NULL,
 	`type` text NOT NULL,
@@ -33,23 +33,23 @@ CREATE TABLE `activities` (
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
 	FOREIGN KEY (`trainer_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
-	CONSTRAINT "ck_activities_duration_positive" CHECK("activities"."duration_minutes" > 0),
-	CONSTRAINT "ck_activities_quality_range" CHECK("activities"."quality_score" BETWEEN 0 AND 100)
+	CONSTRAINT "ck_activities_duration_positive" CHECK("pedago_activities"."duration_minutes" > 0),
+	CONSTRAINT "ck_activities_quality_range" CHECK("pedago_activities"."quality_score" BETWEEN 0 AND 100)
 );
 --> statement-breakpoint
-CREATE INDEX `idx_activities_owner_status_date` ON `activities` (`trainer_id`,`status`,`created_at`);--> statement-breakpoint
-CREATE INDEX `idx_activities_owner_type` ON `activities` (`trainer_id`,`type`);--> statement-breakpoint
+CREATE INDEX `idx_pedago_activities_owner_status_date` ON `pedago_activities` (`trainer_id`,`status`,`created_at`);--> statement-breakpoint
+CREATE INDEX `idx_pedago_activities_owner_type` ON `pedago_activities` (`trainer_id`,`type`);--> statement-breakpoint
 CREATE TABLE `activity_contents` (
 	`id` text PRIMARY KEY NOT NULL,
 	`activity_id` text NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,
 	`content_json` text NOT NULL,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
-	FOREIGN KEY (`activity_id`) REFERENCES `activities`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`activity_id`) REFERENCES `pedago_activities`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_activity_content_version` ON `activity_contents` (`activity_id`,`version`);--> statement-breakpoint
-CREATE TABLE `app_settings` (
+CREATE TABLE `pedago_app_settings` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value_json` text NOT NULL,
 	`updated_by` text,
@@ -110,7 +110,7 @@ CREATE TABLE `learner_results` (
 	`attempt` integer DEFAULT 1 NOT NULL,
 	`self_evaluation` text,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
-	FOREIGN KEY (`activity_id`) REFERENCES `activities`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`activity_id`) REFERENCES `pedago_activities`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`trainer_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
 	CONSTRAINT "ck_results_score" CHECK("learner_results"."score" >= 0 AND "learner_results"."max_score" > 0),
 	CONSTRAINT "ck_results_percentage" CHECK("learner_results"."percentage" BETWEEN 0 AND 100)
@@ -123,7 +123,7 @@ CREATE TABLE `lessons` (
 	`content_json` text NOT NULL,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
-	FOREIGN KEY (`activity_id`) REFERENCES `activities`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`activity_id`) REFERENCES `pedago_activities`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_lessons_activity` ON `lessons` (`activity_id`);--> statement-breakpoint
@@ -141,7 +141,7 @@ CREATE TABLE `questions` (
 	`activity_id` text NOT NULL,
 	`position` integer NOT NULL,
 	`content_json` text NOT NULL,
-	FOREIGN KEY (`activity_id`) REFERENCES `activities`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`activity_id`) REFERENCES `pedago_activities`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `uq_questions_activity_position` ON `questions` (`activity_id`,`position`);--> statement-breakpoint
@@ -167,7 +167,7 @@ CREATE TABLE `sources` (
 	`url` text NOT NULL,
 	`accessed_at` integer,
 	`used_for` text,
-	FOREIGN KEY (`activity_id`) REFERENCES `activities`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`activity_id`) REFERENCES `pedago_activities`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE INDEX `idx_sources_activity` ON `sources` (`activity_id`);--> statement-breakpoint

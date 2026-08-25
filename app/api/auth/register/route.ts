@@ -5,6 +5,7 @@ import { trainerAccessRequests, users } from '@/db/schema';
 import { audit, createSession } from '@/lib/auth';
 import { assertSameOrigin, cleanEmail, jsonError, jsonOk, readJson, AppError } from '@/lib/http';
 import { hashPassword, timingSafeEqual, validatePassword } from '@/lib/security';
+import { migrateLegacyData } from '@/lib/legacy-migration';
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
       getDb().insert(users).values({ id, email, displayName: String(body.displayName ?? '').trim().slice(0, 100) || null, passwordHash: passwordData.hash, passwordSalt: passwordData.salt, role: adminAllowed ? 'admin' : 'trainer', status: adminAllowed ? 'active' : 'pending', activatedAt: adminAllowed ? now : null }),
       getDb().insert(trainerAccessRequests).values({ id: crypto.randomUUID(), trainerId: id, status: adminAllowed ? 'approved' : 'pending', decidedAt: adminAllowed ? now : null }),
     ]);
-    await audit(id, adminAllowed ? 'admin.bootstrap' : 'trainer.requested_access', 'user', id, {}, request);
+    let legacy = { activities:0,results:0 };
+    if (adminAllowed) { try { legacy = await migrateLegacyData(id); } catch (error) { console.error('Reprise des données historiques différée',error instanceof Error ? error.message : 'erreur inconnue'); } }
+    await audit(id, adminAllowed ? 'admin.bootstrap' : 'trainer.requested_access', 'user', id, { legacy }, request);
     if (adminAllowed) await createSession(id, request);
     return jsonOk({ status: adminAllowed ? 'active' : 'pending', message: adminAllowed ? 'Compte administrateur initialisé.' : 'Votre demande d’accès a été enregistrée.' }, 201);
   } catch (error) { return jsonError(error); }

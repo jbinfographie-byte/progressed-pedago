@@ -85,7 +85,7 @@ export const encryptedApiCredentials = sqliteTable('encrypted_api_credentials', 
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_api_credentials_trainer').on(table.trainerId)]);
 
-export const activities = sqliteTable('activities', {
+export const activities = sqliteTable('pedago_activities', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   type: text('type').notNull(), title: text('title').notNull(), theme: text('theme').notNull(), audience: text('audience'),
@@ -96,7 +96,7 @@ export const activities = sqliteTable('activities', {
   imageObjectKey: text('image_object_key'), status: text('status', { enum: ['draft', 'published'] }).notNull().default('draft'),
   qualityScore: integer('quality_score').notNull().default(0), createdAt: integer('created_at').notNull().default(now), updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [
-  index('idx_activities_owner_status_date').on(table.trainerId, table.status, table.createdAt), index('idx_activities_owner_type').on(table.trainerId, table.type),
+  index('idx_pedago_activities_owner_status_date').on(table.trainerId, table.status, table.createdAt), index('idx_pedago_activities_owner_type').on(table.trainerId, table.type),
   check('ck_activities_duration_positive', sql`${table.durationMinutes} > 0`), check('ck_activities_quality_range', sql`${table.qualityScore} BETWEEN 0 AND 100`),
 ]);
 
@@ -145,6 +145,6 @@ export const loginAttempts = sqliteTable('login_attempts', {
   id: text('id').primaryKey(), emailHash: text('email_hash').notNull(), ipHash: text('ip_hash'), success: integer('success', { mode: 'boolean' }).notNull().default(false), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_login_attempts_email_date').on(table.emailHash, table.createdAt)]);
 
-export const appSettings = sqliteTable('app_settings', {
+export const appSettings = sqliteTable('pedago_app_settings', {
   key: text('key').primaryKey(), valueJson: text('value_json').notNull(), updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }), updatedAt: integer('updated_at').notNull().default(now),
 });

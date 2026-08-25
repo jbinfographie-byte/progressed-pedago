@@ -4,6 +4,7 @@ import { loginAttempts, users } from '@/db/schema';
 import { audit, createSession, requestFingerprint } from '@/lib/auth';
 import { AppError, assertSameOrigin, cleanEmail, jsonError, jsonOk, readJson } from '@/lib/http';
 import { sha256, verifyPassword } from '@/lib/security';
+import { migrateLegacyData } from '@/lib/legacy-migration';
 
 export async function POST(request: Request) {
   try {
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
     await createSession(user.id, request);
     await getDb().update(users).set({ lastLoginAt: Math.floor(Date.now() / 1000), updatedAt: Math.floor(Date.now() / 1000) }).where(eq(users.id, user.id));
     await audit(user.id, 'auth.login', 'user', user.id, {}, request);
+    if (user.role === 'admin') { try { await migrateLegacyData(user.id); } catch (error) { console.error('Reprise des données historiques différée',error instanceof Error ? error.message : 'erreur inconnue'); } }
     return jsonOk({ user: { id: user.id, email: user.email, displayName: user.displayName, role: user.role } });
   } catch (error) { return jsonError(error); }
 }
