@@ -13,7 +13,9 @@ Plateforme pédagogique multi-formateurs de Progressed Solution. L’application
 
 ## Administrateur initial
 
-Définir `INITIAL_ADMIN_EMAIL` et un `INITIAL_ADMIN_BOOTSTRAP_TOKEN` long et aléatoire. Lors de la première inscription avec cette adresse, fournir le jeton d’initialisation. Retirer ensuite le jeton de l’environnement. Aucun rôle administrateur n’est déduit d’un champ envoyé par le navigateur.
+Définir `INITIAL_ADMIN_EMAIL` avec l’adresse du propriétaire du Site. Lors de la première inscription, l’identité Sites authentifiée doit correspondre à cette adresse : le compte administrateur est alors créé, activé et connecté automatiquement. L’opération est verrouillée dès qu’un administrateur existe.
+
+`INITIAL_ADMIN_BOOTSTRAP_TOKEN` reste une solution de secours réservée à l’exploitation locale ou à une récupération contrôlée. Il n’est jamais demandé ni exposé dans l’interface.
 
 ## Vérifications
 

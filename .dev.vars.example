@@ -1,7 +1,7 @@
 MASTER_ENCRYPTION_KEY=base64-de-32-octets
 SECURITY_PEPPER=chaine-aleatoire-longue
 INITIAL_ADMIN_EMAIL=administrateur@example.fr
-INITIAL_ADMIN_BOOTSTRAP_TOKEN=jeton-initialisation-usage-unique
+INITIAL_ADMIN_BOOTSTRAP_TOKEN=jeton-de-secours-hors-interface
 OPENAI_MODEL=gpt-5.5
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 RESEND_API_KEY=
