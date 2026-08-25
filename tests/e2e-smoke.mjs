@@ -24,14 +24,14 @@ async function call(path, { cookie = '', method = 'GET', body } = {}) {
 
 let admin;
 try {
-  admin = await call('/api/auth/register', { method: 'POST', body: { email: adminEmail, displayName: 'Admin Progressed', password: adminPassword, passwordConfirmation: adminPassword, bootstrapToken: 'LocalBootstrap#2026!' } });
+  admin = await call('/api/auth/register', { method: 'POST', body: { email: adminEmail, password: adminPassword, bootstrapToken: 'LocalBootstrap#2026!' } });
 } catch (error) {
   if (!String(error).includes('Un compte existe déjà')) throw error;
   admin = await call('/api/auth/login', { method: 'POST', body: { email: adminEmail, password: adminPassword } });
 }
 assert.ok(admin.cookie, 'la session administrateur doit être créée');
 
-const registration = await call('/api/auth/register', { method: 'POST', body: { email: trainerEmail, displayName: 'Camille Formatrice', password: trainerPassword, passwordConfirmation: trainerPassword } });
+const registration = await call('/api/auth/register', { method: 'POST', body: { email: trainerEmail, password: trainerPassword } });
 assert.equal(registration.data.status, 'pending');
 
 const pending = await call('/api/admin/requests', { cookie: admin.cookie });

@@ -10,6 +10,7 @@ test('la politique de mot de passe impose les cinq critères', () => {
 test('le mot de passe est dérivé avec sel et vérifiable', async () => {
   const value = await hashPassword('PhraseSolide#2026');
   assert.notEqual(value.hash, 'PhraseSolide#2026');
+  assert.match(value.hash, /^pbkdf2-sha256\$100000\$/);
   assert.equal(await verifyPassword('PhraseSolide#2026', value.salt, value.hash), true);
   assert.equal(await verifyPassword('Mauvais#2026', value.salt, value.hash), false);
 });

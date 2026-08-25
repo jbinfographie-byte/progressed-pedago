@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const body = await readJson(request);
     const email = cleanEmail(body.email);
     const password = String(body.password ?? '');
-    if (password !== String(body.passwordConfirmation ?? '')) throw new AppError(400, 'Les deux mots de passe ne correspondent pas.', 'PASSWORD_MISMATCH');
+    if (body.passwordConfirmation !== undefined && password !== String(body.passwordConfirmation)) throw new AppError(400, 'Les deux mots de passe ne correspondent pas.', 'PASSWORD_MISMATCH');
     const errors = validatePassword(password);
     if (errors.length) throw new AppError(400, errors.join(' '), 'WEAK_PASSWORD');
     const existing = await getDb().select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
