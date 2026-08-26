@@ -16,6 +16,11 @@ export const ACTIVITY_TYPES = [
 ] as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[number][0];
+export const CREATABLE_ACTIVITY_TYPE_IDS = ['quiz','drag-drop','true-false','scenario'] as const satisfies readonly ActivityType[];
+const creatableActivityTypeIds = new Set<string>(CREATABLE_ACTIVITY_TYPE_IDS);
+export const CREATABLE_ACTIVITY_TYPES = ACTIVITY_TYPES.filter(([type]) => creatableActivityTypeIds.has(type));
+export type CreatableActivityType = (typeof CREATABLE_ACTIVITY_TYPE_IDS)[number];
+export function isCreatableActivityType(value: unknown): value is CreatableActivityType { return typeof value === 'string' && creatableActivityTypeIds.has(value); }
 export type ActivityDraft = { type: ActivityType; title: string; theme: string; audience: string; level: 'debutant' | 'intermediaire' | 'avance'; objectives: string[]; durationMinutes: number; instructions: string; explanation: string; correction: string; sources: Array<{ title: string; organization?: string; url: string; usedFor?: string }>; content: Record<string, unknown> };
 
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];

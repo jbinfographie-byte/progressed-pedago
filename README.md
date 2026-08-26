@@ -1,6 +1,6 @@
 # Progressed Pédago
 
-Plateforme pédagogique multi-formateurs de Progressed Solution. L’application permet de créer manuellement ou avec OpenAI, d’importer des documents privés, d’animer 27 formats d’activités, d’imprimer en A4 et de suivre les résultats.
+Plateforme pédagogique multi-formateurs de Progressed Solution. L’application permet de créer manuellement ou avec OpenAI quatre formats essentiels — quiz interactif, glisser-déposer, vrai ou faux et mise en situation —, d’importer des documents privés, d’imprimer en A4 et de suivre les résultats.
 
 ## Démarrage local
 

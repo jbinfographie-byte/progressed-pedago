@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIVITY_TYPES, normalizeAnswer, validateActivityDraft, validateMechanic, type ActivityType } from '../lib/activity-types.ts';
+import { ACTIVITY_TYPES, CREATABLE_ACTIVITY_TYPES, isCreatableActivityType, normalizeAnswer, validateActivityDraft, validateMechanic, type ActivityType } from '../lib/activity-types.ts';
 
 function validContent(type: ActivityType): Record<string, unknown> {
   if (type === 'quiz' || type === 'tv-quiz') return { questions: [{ question: 'Q', choices: ['A','B'], correctIndex: 0 }] };
@@ -23,6 +23,12 @@ function validContent(type: ActivityType): Record<string, unknown> {
 test('les 27 mécaniques sont déclarées avec des identifiants uniques', () => {
   assert.equal(ACTIVITY_TYPES.length, 27);
   assert.equal(new Set(ACTIVITY_TYPES.map(([type]) => type)).size, 27);
+});
+
+test('seuls les quatre formats demandés sont proposés à la création', () => {
+  assert.deepEqual(CREATABLE_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario']);
+  assert.equal(isCreatableActivityType('scenario'), true);
+  assert.equal(isCreatableActivityType('word-search'), false);
 });
 
 for (const [type, label] of ACTIVITY_TYPES) {
