@@ -1,12 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { trainerAccessRequests, users } from '@/db/schema';
+import { trainerAccessRequests, trainerPermissions, users } from '@/db/schema';
 import { getInitialAdminEligibility } from '@/lib/admin-bootstrap';
 import { audit, createSession } from '@/lib/auth';
 import { assertSameOrigin, cleanEmail, jsonError, jsonOk, readJson, AppError } from '@/lib/http';
 import { hashPassword, validatePassword } from '@/lib/security';
 import { migrateLegacyData } from '@/lib/legacy-migration';
+import { PERMISSION_PRESETS } from '@/lib/permissions';
 
 export async function POST(request: Request) {
   try {
@@ -34,13 +35,17 @@ export async function POST(request: Request) {
       throw new AppError(403, 'Connectez-vous d’abord avec le compte sécurisé associé à cette adresse e-mail, puis réessayez.', 'ADMIN_IDENTITY_REQUIRED');
     }
     const adminAllowed = adminEligibility.allowed;
+    const firstName = String(body.firstName ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    const lastName = String(body.lastName ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    if (!adminAllowed && (!firstName || !lastName)) throw new AppError(400, 'Renseignez votre prénom et votre nom pour que l’administrateur puisse identifier votre demande.', 'NAME_REQUIRED');
     const id = crypto.randomUUID();
     const passwordData = await hashPassword(password);
     const now = Math.floor(Date.now() / 1000);
-    await getDb().batch([
-      getDb().insert(users).values({ id, email, displayName: String(body.displayName ?? '').trim().slice(0, 100) || null, passwordHash: passwordData.hash, passwordSalt: passwordData.salt, role: adminAllowed ? 'admin' : 'trainer', status: adminAllowed ? 'active' : 'pending', activatedAt: adminAllowed ? now : null }),
-      getDb().insert(trainerAccessRequests).values({ id: crypto.randomUUID(), trainerId: id, status: adminAllowed ? 'approved' : 'pending', decidedAt: adminAllowed ? now : null }),
-    ]);
+    const displayName = adminAllowed ? String(body.displayName ?? '').trim().slice(0, 100) || null : `${firstName} ${lastName}`;
+    const insertUser = getDb().insert(users).values({ id, email, displayName, firstName: firstName || null, lastName: lastName || null, passwordHash: passwordData.hash, passwordSalt: passwordData.salt, role: adminAllowed ? 'admin' : 'trainer', status: adminAllowed ? 'active' : 'pending', activatedAt: adminAllowed ? now : null });
+    const insertRequest = getDb().insert(trainerAccessRequests).values({ id: crypto.randomUUID(), trainerId: id, status: adminAllowed ? 'approved' : 'pending', decidedAt: adminAllowed ? now : null });
+    if (adminAllowed) await getDb().batch([insertUser, insertRequest]);
+    else await getDb().batch([insertUser, insertRequest, getDb().insert(trainerPermissions).values({ trainerId: id, accessLevel: 'limited', permissionsJson: JSON.stringify(PERMISSION_PRESETS.limited) })]);
     let legacy = { activities:0,results:0 };
     if (adminAllowed) { try { legacy = await migrateLegacyData(id); } catch (error) { console.error('Reprise des données historiques différée',error instanceof Error ? error.message : 'erreur inconnue'); } }
     await audit(id, adminAllowed ? 'admin.bootstrap' : 'trainer.requested_access', 'user', id, { legacy, method: adminEligibility.method }, request);

@@ -1,7 +1,7 @@
 import { and, desc, eq, like, or } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { activities, activityContents } from '@/db/schema';
-import { audit, requireUser } from '@/lib/auth';
+import { assertPermission, audit, requirePermission, requireUser } from '@/lib/auth';
 import { ActivityDraft, validateActivityDraft } from '@/lib/activity-types';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 
@@ -20,7 +20,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requireUser(); const body = await readJson(request); const draft = body as unknown as ActivityDraft;
+    assertSameOrigin(request); const user = await requirePermission('createActivities'); const body = await readJson(request); const draft = body as unknown as ActivityDraft;
+    if (body.status === 'published') assertPermission(user, 'publishActivities');
     const validation = validateActivityDraft(draft); if (!validation.valid) throw new AppError(400, validation.errors.join(' '), 'INVALID_ACTIVITY');
     const id = crypto.randomUUID(); const now = Math.floor(Date.now() / 1000); const status = body.status === 'published' ? 'published' : 'draft';
     await getDb().batch([

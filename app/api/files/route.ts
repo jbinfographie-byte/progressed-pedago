@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { uploadedFiles } from '@/db/schema';
-import { audit, requireUser } from '@/lib/auth';
+import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
 
 const ACCEPTED = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'image/png', 'image/jpeg']);
@@ -10,12 +10,12 @@ const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const MAX_FILES = 10;
 
 export async function GET() {
-  try { const user = await requireUser(); const files = await getDb().select().from(uploadedFiles).where(eq(uploadedFiles.trainerId, user.id)).orderBy(desc(uploadedFiles.createdAt)); return jsonOk({ files }); } catch (error) { return jsonError(error); }
+  try { const user = await requirePermission('uploadDocuments'); const files = await getDb().select().from(uploadedFiles).where(eq(uploadedFiles.trainerId, user.id)).orderBy(desc(uploadedFiles.createdAt)); return jsonOk({ files }); } catch (error) { return jsonError(error); }
 }
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requireUser(); const formData = await request.formData(); const files = formData.getAll('files').filter((entry): entry is File => entry instanceof File);
+    assertSameOrigin(request); const user = await requirePermission('uploadDocuments'); const formData = await request.formData(); const files = formData.getAll('files').filter((entry): entry is File => entry instanceof File);
     if (!files.length) throw new AppError(400, 'Sélectionnez au moins un document.', 'NO_FILES');
     if (files.length > MAX_FILES) throw new AppError(400, `Vous pouvez importer au maximum ${MAX_FILES} fichiers à la fois.`, 'TOO_MANY_FILES');
     for (const file of files) { if (!ACCEPTED.has(file.type)) throw new AppError(400, `Le format de « ${file.name} » n’est pas accepté.`, 'INVALID_FILE_TYPE'); if (file.size > MAX_FILE_SIZE) throw new AppError(413, `« ${file.name} » dépasse la limite de 20 Mo.`, 'FILE_TOO_LARGE'); }
@@ -32,5 +32,5 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  try { assertSameOrigin(request); const user = await requireUser(); const id = new URL(request.url).searchParams.get('id') ?? ''; const file = (await getDb().select().from(uploadedFiles).where(and(eq(uploadedFiles.id, id), eq(uploadedFiles.trainerId, user.id))).limit(1))[0]; if (!file) throw new AppError(404, 'Ce fichier est introuvable.', 'FILE_NOT_FOUND'); await env.FILES.delete(file.objectKey); await getDb().delete(uploadedFiles).where(and(eq(uploadedFiles.id, id), eq(uploadedFiles.trainerId, user.id))); await audit(user.id, 'file.deleted', 'uploaded_file', id, {}, request); return jsonOk({ message: 'Le fichier a été supprimé.' }); } catch (error) { return jsonError(error); }
+  try { assertSameOrigin(request); const user = await requirePermission('uploadDocuments'); const id = new URL(request.url).searchParams.get('id') ?? ''; const file = (await getDb().select().from(uploadedFiles).where(and(eq(uploadedFiles.id, id), eq(uploadedFiles.trainerId, user.id))).limit(1))[0]; if (!file) throw new AppError(404, 'Ce fichier est introuvable.', 'FILE_NOT_FOUND'); await env.FILES.delete(file.objectKey); await getDb().delete(uploadedFiles).where(and(eq(uploadedFiles.id, id), eq(uploadedFiles.trainerId, user.id))); await audit(user.id, 'file.deleted', 'uploaded_file', id, {}, request); return jsonOk({ message: 'Le fichier a été supprimé.' }); } catch (error) { return jsonError(error); }
 }

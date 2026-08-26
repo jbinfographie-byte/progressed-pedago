@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { activities, activityContents, encryptedApiCredentials, uploadedFiles } from '@/db/schema';
-import { audit, requireUser } from '@/lib/auth';
+import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { ACTIVITY_TYPES, ActivityDraft, ActivityType, validateActivityDraft } from '@/lib/activity-types';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { decryptSecret } from '@/lib/security';
@@ -11,7 +11,7 @@ type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: s
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requireUser(); const body = await readJson(request); const prompt = String(body.prompt ?? '').trim();
+    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); const body = await readJson(request); const prompt = String(body.prompt ?? '').trim();
     if (prompt.length < 15) throw new AppError(400, 'Décrivez plus précisément le cours ou l’activité souhaitée.', 'PROMPT_TOO_SHORT');
     const requested = Array.isArray(body.formats) ? body.formats.map(String) : [String(body.type ?? 'quiz')];
     const formats = [...new Set(requested)].filter((type): type is ActivityType => ACTIVITY_TYPES.some(([candidate]) => candidate === type)).slice(0, 6);

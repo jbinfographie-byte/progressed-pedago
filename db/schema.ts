@@ -7,6 +7,8 @@ export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
   displayName: text('display_name'),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
   passwordHash: text('password_hash').notNull(),
   passwordSalt: text('password_salt').notNull(),
   role: text('role', { enum: ['admin', 'trainer'] }).notNull().default('trainer'),
@@ -33,6 +35,14 @@ export const trainerAccessRequests = sqliteTable('trainer_access_requests', {
   index('idx_access_requests_status_date').on(table.status, table.requestedAt),
   index('idx_access_requests_trainer').on(table.trainerId),
 ]);
+
+export const trainerPermissions = sqliteTable('trainer_permissions', {
+  trainerId: text('trainer_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  accessLevel: text('access_level', { enum: ['limited', 'medium', 'extended', 'custom'] }).notNull().default('limited'),
+  permissionsJson: text('permissions_json').notNull().default('{"createActivities":true,"editActivities":true,"deleteActivities":false,"publishActivities":false,"useAi":false,"uploadDocuments":false,"viewResults":true,"exportResults":false,"manageResources":false,"manageAiConnection":false}'),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: integer('updated_at').notNull().default(now),
+});
 
 export const activationCodes = sqliteTable('activation_codes', {
   id: text('id').primaryKey(),

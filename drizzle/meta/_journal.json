@@ -15,6 +15,13 @@
       "when": 1787666377554,
       "tag": "0001_workable_sleeper",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787670104657,
+      "tag": "0002_demonic_zaladane",
+      "breakpoints": true
     }
   ]
 }

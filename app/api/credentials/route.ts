@@ -2,13 +2,13 @@ import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { encryptedApiCredentials } from '@/db/schema';
-import { audit, requireUser } from '@/lib/auth';
+import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { encryptSecret } from '@/lib/security';
 
 export async function GET() {
   try {
-    const user = await requireUser();
+    const user = await requirePermission('manageAiConnection');
     const credential = (await getDb().select({ lastFour: encryptedApiCredentials.lastFour, model: encryptedApiCredentials.model, validatedAt: encryptedApiCredentials.validatedAt }).from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
     return jsonOk({ connected: Boolean(credential), credential: credential ?? null });
   } catch (error) { return jsonError(error); }
@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requireUser();
+    const user = await requirePermission('manageAiConnection');
     const body = await readJson(request);
     const apiKey = String(body.apiKey ?? '').trim();
     const model = String(body.model ?? env.OPENAI_MODEL ?? 'gpt-5.5').trim();
@@ -40,5 +40,5 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  try { assertSameOrigin(request); const user = await requireUser(); await getDb().delete(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)); await audit(user.id, 'credential.deleted', 'openai_credential', null, {}, request); return jsonOk({ message: 'La clé OpenAI a été supprimée.' }); } catch (error) { return jsonError(error); }
+  try { assertSameOrigin(request); const user = await requirePermission('manageAiConnection'); await getDb().delete(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)); await audit(user.id, 'credential.deleted', 'openai_credential', null, {}, request); return jsonOk({ message: 'La clé OpenAI a été supprimée.' }); } catch (error) { return jsonError(error); }
 }
