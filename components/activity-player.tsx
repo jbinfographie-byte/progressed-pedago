@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { normalizeAnswer, type ActivityType } from '@/lib/activity-types';
+import { ACTIVITY_TYPES, normalizeAnswer, type ActivityType } from '@/lib/activity-types';
+import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } from '@/components/activity-print-sheet';
 
-type PlayerActivity = { id?: string; type: ActivityType; title: string; instructions?: string; explanation?: string; content: Record<string, unknown> };
+type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
@@ -14,12 +15,16 @@ export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity
   return (
     <div className={`player-backdrop ${fullscreen ? 'is-fullscreen' : ''}`} role="dialog" aria-modal="true" aria-labelledby="player-title">
       <section className="player-shell">
-        <header className="player-header">
-          <div><p className="overline">Activité en direct</p><h2 id="player-title">{activity.title}</h2><p>{activity.instructions}</p></div>
-          <div><button className="button light" type="button" onClick={() => window.print()}>Imprimer en A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button><button className="button dark" type="button" onClick={onClose}>Fermer</button></div>
-        </header>
-        <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} /></main>
-        {activity.explanation && <details className="lesson-drawer"><summary>Afficher le cours et les explications</summary><p>{activity.explanation}</p></details>}
+        <div className="screen-player-content">
+          <header className="player-header">
+            <div><p className="overline">Activité en direct</p><h2 id="player-title">{activity.title}</h2><p>{activity.instructions}</p></div>
+            <div><button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button><button className="button dark" type="button" onClick={onClose}>Fermer</button></div>
+          </header>
+          <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
+          {activity.explanation && <details className="lesson-drawer lesson-panel" open><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><StructuredExplanation text={activity.explanation} /></details>}
+          <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} /></main>
+        </div>
+        <ActivityPrintSheet activity={activity} />
       </section>
     </div>
   );
@@ -53,14 +58,14 @@ function Quiz({ content, televised = false }: { content: Record<string, unknown>
     {televised && <div className="game-strip"><span>♥ ♥ ♥</span><strong>Score {score}</strong><span>{index + 1}/{questions.length}</span></div>}
     <p className="step-label">Question {index + 1} sur {questions.length}</p><h3>{question.question}</h3>
     <div className="choice-grid">{(question.choices ?? []).map((choice, choiceIndex) => <button type="button" key={choice} onClick={() => select(choiceIndex)} className={answer === null ? '' : choiceIndex === Number(question.correctIndex ?? 0) ? 'correct' : answer === choiceIndex ? 'wrong' : ''}><span>{String.fromCharCode(65 + choiceIndex)}</span>{choice}</button>)}</div>
-    {answer !== null && <div className="feedback-box" role="status"><strong>{answer === Number(question.correctIndex ?? 0) ? 'Bonne réponse !' : 'À revoir'}</strong><p>{question.explanation}</p><button className="button dark" type="button" onClick={() => { setIndex((value) => (value + 1) % questions.length); setAnswer(null); }}>Question suivante</button></div>}
+    {answer !== null && <div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer === Number(question.correctIndex ?? 0) ? 'Bonne réponse !' : 'À revoir'}</strong>{question.explanation ? <StructuredExplanation text={question.explanation} compact /> : <p>Relisez le mini-cours puis reformulez la règle avec vos propres mots.</p>}<button className="button dark" type="button" onClick={() => { setIndex((value) => (value + 1) % questions.length); setAnswer(null); }}>Question suivante</button></div>}
   </div>;
 }
 
 function TrueFalse({ content }: { content: Record<string, unknown> }) {
   const statements = (Array.isArray(content.statements) ? content.statements : []) as Array<{ text?: string; answer?: boolean; explanation?: string }>;
   const [index, setIndex] = useState(0); const [choice, setChoice] = useState<boolean | null>(null); const item = statements[index]; if (!item) return <EmptyMechanic />;
-  return <div className="binary-board"><p className="step-label">Affirmation {index + 1}/{statements.length}</p><h3>{item.text}</h3><div><button type="button" onClick={() => setChoice(true)}>✓ Vrai</button><button type="button" onClick={() => setChoice(false)}>× Faux</button></div>{choice !== null && <div className="feedback-box"><strong>{choice === Boolean(item.answer) ? 'Exact' : 'Pas tout à fait'}</strong><p>{item.explanation}</p><button className="button dark" type="button" onClick={() => { setIndex((value) => (value + 1) % statements.length); setChoice(null); }}>Continuer</button></div>}</div>;
+  return <div className="binary-board"><p className="step-label">Affirmation {index + 1}/{statements.length}</p><h3>{item.text}</h3><div><button type="button" onClick={() => setChoice(true)}>✓ Vrai</button><button type="button" onClick={() => setChoice(false)}>× Faux</button></div>{choice !== null && <div className="feedback-box detailed-feedback"><span className="feedback-label">Pourquoi ?</span><strong>{choice === Boolean(item.answer) ? 'Exact' : 'Pas tout à fait'}</strong>{item.explanation ? <StructuredExplanation text={item.explanation} compact /> : <p>Expliquez la règle qui permet de décider.</p>}<button className="button dark" type="button" onClick={() => { setIndex((value) => (value + 1) % statements.length); setChoice(null); }}>Continuer</button></div>}</div>;
 }
 
 function Cards({ content, random, memory, pair }: { content: Record<string, unknown>; random?: boolean; memory?: boolean; pair?: boolean }) {
@@ -107,7 +112,7 @@ function Classifier({ content }: { content: Record<string, unknown> }) {
 
 function TypedAnswer({ content }: { content: Record<string, unknown> }) {
   const prompts = (Array.isArray(content.prompts) ? content.prompts : []) as Array<{ question?: string; answer?: string; explanation?: string }>; const [index,setIndex] = useState(0); const [value,setValue] = useState(''); const [checked,setChecked] = useState(false); const item = prompts[index]; if (!item) return <EmptyMechanic />; const correct = normalizeAnswer(value) === normalizeAnswer(String(item.answer ?? ''));
-  return <div className="typed-board"><h3>{item.question}</h3><label>Votre réponse<input value={value} onChange={(event) => { setValue(event.target.value); setChecked(false); }} /></label><button className="button dark" type="button" onClick={() => setChecked(true)}>Vérifier</button>{checked && <div className="feedback-box"><strong>{correct ? 'Bonne réponse' : `Réponse attendue : ${item.answer}`}</strong><p>{item.explanation}</p><button type="button" className="button light" onClick={() => { setIndex((current) => (current + 1) % prompts.length); setValue(''); setChecked(false); }}>Suivant</button></div>}</div>;
+  return <div className="typed-board"><h3>{item.question}</h3><label>Votre réponse<input value={value} onChange={(event) => { setValue(event.target.value); setChecked(false); }} /></label><button className="button dark" type="button" onClick={() => setChecked(true)}>Vérifier</button>{checked && <div className="feedback-box detailed-feedback"><span className="feedback-label">Correction expliquée</span><strong>{correct ? 'Bonne réponse' : `Réponse attendue : ${item.answer}`}</strong>{item.explanation ? <StructuredExplanation text={item.explanation} compact /> : <p>Comparez votre formulation avec la réponse attendue et identifiez la notion essentielle.</p>}<button type="button" className="button light" onClick={() => { setIndex((current) => (current + 1) % prompts.length); setValue(''); setChecked(false); }}>Suivant</button></div>}</div>;
 }
 
 function Maze({ content }: { content: Record<string, unknown> }) { const cells = asItems(content.cells); const [position,setPosition] = useState(0); if (cells.length < 4) return <EmptyMechanic />; return <div className="maze-board"><p>Avancez uniquement vers une réponse correcte.</p><div>{cells.map((cell,index) => <button type="button" className={index === position ? 'player-cell' : ''} onClick={() => cell.correct && setPosition(index)} key={index}>{index === position ? '●' : label(cell)}</button>)}</div><strong>{position === cells.length - 1 ? 'Arrivée atteinte !' : 'Cherchez le prochain passage correct.'}</strong></div>; }
