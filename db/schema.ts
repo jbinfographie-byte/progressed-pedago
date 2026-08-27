@@ -168,6 +168,19 @@ export const uploadedFiles = sqliteTable('uploaded_files', {
   status: text('status', { enum: ['uploaded', 'analyzing', 'ready', 'failed'] }).notNull().default('uploaded'), pageCount: integer('page_count'), analysisJson: text('analysis_json'), errorMessage: text('error_message'), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_uploaded_files_object_key').on(table.objectKey), index('idx_uploaded_files_owner_status').on(table.trainerId, table.status)]);
 
+export const courseFolderFiles = sqliteTable('course_folder_files', {
+  id: text('id').primaryKey(),
+  folderId: text('folder_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
+  fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_course_folder_file').on(table.folderId, table.fileId),
+  uniqueIndex('uq_course_folder_file_position').on(table.folderId, table.position),
+  index('idx_course_folder_files_file').on(table.fileId),
+  check('ck_course_folder_file_position', sql`${table.position} >= 0`),
+]);
+
 export const externalResources = sqliteTable('external_resources', {
   id: text('id').primaryKey(), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }), name: text('name').notNull(), url: text('url').notNull(), category: text('category').notNull().default('Autre'), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_external_resources_owner_category').on(table.trainerId, table.category)]);

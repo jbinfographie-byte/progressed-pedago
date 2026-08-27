@@ -50,9 +50,12 @@ export async function POST(request: Request) {
     if (!deck.title?.trim() || !Array.isArray(deck.slides) || deck.slides.length < 4) throw new AppError(502,'La présentation générée est incomplète. Relancez la demande.','OPENAI_INCOMPLETE_PRESENTATION');
     const citedUrls = collectCitedUrls(payload.output); const sources = [...files.map((file) => `Document importé : ${file.originalName}`),...(source ? [`${source.title} — ${source.url}`] : []),...citedUrls];
     const pptx = createPowerPoint({...deck,sources:[...new Set(sources)]}); const filename = safePresentationFilename(deck.title);
-    await audit(user.id,'ai.presentation_generated','presentation',null,{slideCount:deck.slides.length + 1,fileCount:files.length,sourceKind:kind,research,analysisMethod:source?.analysisMethod ?? null},request);
+    const presentationId = crypto.randomUUID(); const objectKey = `trainers/${user.id}/${presentationId}/${filename}`;
+    await env.FILES.put(objectKey,pptx,{httpMetadata:{contentType:'application/vnd.openxmlformats-officedocument.presentationml.presentation'},customMetadata:{owner:user.id,originalName:filename,kind:'generated-presentation'}});
+    await getDb().insert(uploadedFiles).values({id:presentationId,trainerId:user.id,objectKey,originalName:filename,mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation',sizeBytes:pptx.byteLength,status:'ready',analysisJson:JSON.stringify({kind:'presentation',title:deck.title,slideCount:deck.slides.length + 1})});
+    await audit(user.id,'ai.presentation_generated','presentation',presentationId,{slideCount:deck.slides.length + 1,fileCount:files.length,sourceKind:kind,research,analysisMethod:source?.analysisMethod ?? null,savedToLibrary:true},request);
     const sourceNotice = source?.analysisMethod === 'public_metadata_visuals' ? 'Vidéo restreinte : présentation fondée sur les informations publiques et les aperçus visuels.' : '';
-    return new Response(pptx.buffer as ArrayBuffer,{status:200,headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.presentationml.presentation','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'private, no-store','X-Presentation-Filename':encodeURIComponent(filename),'X-Source-Notice':encodeURIComponent(sourceNotice)}});
+    return new Response(pptx.buffer as ArrayBuffer,{status:200,headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.presentationml.presentation','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'private, no-store','X-Presentation-Filename':encodeURIComponent(filename),'X-Presentation-File-Id':presentationId,'X-Source-Notice':encodeURIComponent(sourceNotice)}});
   } catch (error) { return jsonError(error); }
 }
 

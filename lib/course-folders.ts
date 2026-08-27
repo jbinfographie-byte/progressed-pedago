@@ -14,6 +14,14 @@ export function normalizeFolderColor(value: unknown): CourseFolderColor {
 }
 
 export function normalizeFolderActivityIds(value: unknown): string[] {
+  return normalizeFolderItemIds(value);
+}
+
+export function normalizeFolderFileIds(value: unknown): string[] {
+  return normalizeFolderItemIds(value);
+}
+
+function normalizeFolderItemIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map(String).map((item) => item.trim()).filter((item) => /^[A-Za-z0-9-]{8,80}$/.test(item)))].slice(0,100);
 }

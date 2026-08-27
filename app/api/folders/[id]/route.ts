@@ -1,8 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, courseFolderItems, courseFolders } from '@/db/schema';
+import { activities, courseFolderFiles, courseFolderItems, courseFolders, uploadedFiles } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
-import { normalizeFolderActivityIds, normalizeFolderColor, normalizeFolderDescription, normalizeFolderName } from '@/lib/course-folders';
+import { normalizeFolderActivityIds, normalizeFolderColor, normalizeFolderDescription, normalizeFolderFileIds, normalizeFolderName } from '@/lib/course-folders';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 
 async function ownedFolder(id: string,userId: string) {
@@ -28,9 +28,19 @@ export async function PATCH(request: Request,context: {params: Promise<{id:strin
       statements.push(getDb().delete(courseFolderItems).where(eq(courseFolderItems.folderId,id)));
       activityIds.forEach((activityId,position) => statements.push(getDb().insert(courseFolderItems).values({id:crypto.randomUUID(),folderId:id,activityId,position,createdAt:now})));
     }
+    let fileIds: string[] | null = null;
+    if ('fileIds' in body) {
+      fileIds = normalizeFolderFileIds(body.fileIds);
+      if (Array.isArray(body.fileIds) && fileIds.length !== new Set(body.fileIds.map(String)).size) throw new AppError(400,'La liste des supports contient un identifiant invalide.','INVALID_FOLDER_FILES');
+      const ownedIds = fileIds.length ? await getDb().select({id:uploadedFiles.id}).from(uploadedFiles).where(and(eq(uploadedFiles.trainerId,user.id),inArray(uploadedFiles.id,fileIds))) : [];
+      if (ownedIds.length !== fileIds.length) throw new AppError(400,'Un support sélectionné n’appartient pas à votre bibliothèque.','FOREIGN_FOLDER_FILE');
+      statements.push(getDb().delete(courseFolderFiles).where(eq(courseFolderFiles.folderId,id)));
+      fileIds.forEach((fileId,position) => statements.push(getDb().insert(courseFolderFiles).values({id:crypto.randomUUID(),folderId:id,fileId,position,createdAt:now})));
+    }
     await getDb().batch(statements as unknown as Parameters<ReturnType<typeof getDb>['batch']>[0]);
-    await audit(user.id,'folder.updated','course_folder',id,{renamed:changes.name !== undefined,activityCount:activityIds?.length ?? undefined,previousName:folder.name},request);
-    return jsonOk({message:activityIds ? 'Le parcours et l’ordre des activités sont enregistrés.' : 'Le dossier est renommé et enregistré.'});
+    const contentUpdated = activityIds !== null || fileIds !== null;
+    await audit(user.id,'folder.updated','course_folder',id,{renamed:changes.name !== undefined,activityCount:activityIds?.length ?? undefined,fileCount:fileIds?.length ?? undefined,previousName:folder.name},request);
+    return jsonOk({message:contentUpdated ? 'Le contenu du dossier et l’ordre des activités sont enregistrés.' : 'Le dossier est renommé et enregistré.'});
   } catch (error) { return jsonError(error); }
 }
 
@@ -39,6 +49,6 @@ export async function DELETE(request: Request,context: {params: Promise<{id:stri
     assertSameOrigin(request); const user = await requirePermission('editActivities'); const id = (await context.params).id; const folder = await ownedFolder(id,user.id);
     await getDb().delete(courseFolders).where(and(eq(courseFolders.id,id),eq(courseFolders.trainerId,user.id)));
     await audit(user.id,'folder.deleted','course_folder',id,{name:folder.name,activitiesPreserved:true},request);
-    return jsonOk({message:'Le dossier est supprimé. Les activités restent dans votre bibliothèque.'});
+    return jsonOk({message:'Le dossier est supprimé. Les activités et supports restent dans votre bibliothèque.'});
   } catch (error) { return jsonError(error); }
 }

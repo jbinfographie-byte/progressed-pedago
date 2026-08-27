@@ -5,7 +5,7 @@ import { uploadedFiles } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
 
-const ACCEPTED = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'image/png', 'image/jpeg']);
+const ACCEPTED = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/vnd.ms-powerpoint', 'text/plain', 'image/png', 'image/jpeg']);
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 const MAX_FILES = 10;
 
