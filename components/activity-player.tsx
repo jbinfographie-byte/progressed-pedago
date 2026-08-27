@@ -6,12 +6,14 @@ import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } fro
 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
+type SourceMedia = { kind: 'youtube'; url: string; embedUrl: string; title: string; videoId: string };
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
 
 export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity; onClose: () => void }) {
   const [fullscreen, setFullscreen] = useState(false);
+  const sourceMedia = readSourceMedia(activity.content.sourceMedia);
   return (
     <div className={`player-backdrop ${fullscreen ? 'is-fullscreen' : ''}`} role="dialog" aria-modal="true" aria-labelledby="player-title">
       <section className="player-shell">
@@ -21,6 +23,7 @@ export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity
             <div><button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button><button className="button dark" type="button" onClick={onClose}>Fermer</button></div>
           </header>
           <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
+          {sourceMedia && <section className="source-video"><div><span>Vidéo source</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir sur YouTube ↗</a></div><iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen /></section>}
           {activity.explanation && <details className="lesson-drawer lesson-panel" open><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><StructuredExplanation text={activity.explanation} /></details>}
           <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} /></main>
         </div>
@@ -28,6 +31,12 @@ export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity
       </section>
     </div>
   );
+}
+
+function readSourceMedia(value: unknown): SourceMedia | null {
+  if (!value || typeof value !== 'object') return null; const media = value as Partial<SourceMedia>;
+  if (media.kind !== 'youtube' || !media.videoId || !/^[A-Za-z0-9_-]{11}$/.test(media.videoId)) return null;
+  return { kind:'youtube',videoId:media.videoId,url:`https://www.youtube.com/watch?v=${media.videoId}`,embedUrl:`https://www.youtube-nocookie.com/embed/${media.videoId}`,title:String(media.title ?? 'Vidéo YouTube') };
 }
 
 function Mechanic({ type, content }: { type: ActivityType; content: Record<string, unknown> }) {

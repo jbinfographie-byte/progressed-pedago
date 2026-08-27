@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-export class AppError extends Error { constructor(public status: number, message: string, public code = 'APP_ERROR') { super(message); } }
+import { AppError } from './app-error';
+export { AppError } from './app-error';
 export function jsonOk<T>(data: T, status = 200) { return NextResponse.json({ ok: true, data }, { status }); }
 export function jsonError(error: unknown) { if (error instanceof AppError) return NextResponse.json({ ok: false, error: { code: error.code, message: error.message } }, { status: error.status }); console.error('Erreur serveur Progressed Pédago', error instanceof Error ? { name: error.name, message: error.message } : { type: typeof error }); return NextResponse.json({ ok: false, error: { code: 'INTERNAL_ERROR', message: 'Une erreur technique est survenue. Réessayez dans quelques instants.' } }, { status: 500 }); }
 export function cleanEmail(value: unknown): string { const email = String(value ?? '').trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new AppError(400, 'Saisissez une adresse e-mail valide.', 'INVALID_EMAIL'); return email; }
