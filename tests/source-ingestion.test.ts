@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isTrustedYouTubeMediaUrl, normalizeSourceKind, parseVimeoVideoId, parseYouTubeVideoId, resolveSourceMaterial, selectYouTubeAudioFormat, sourcePromptBlock } from '../lib/source-ingestion.ts';
+import { extractYouTubePublicMetadata, isTrustedYouTubeMediaUrl, normalizeSourceKind, parseVimeoVideoId, parseYouTubeVideoId, resolveSourceMaterial, selectYouTubeAudioFormat, sourcePromptBlock } from '../lib/source-ingestion.ts';
 
 test('reconnaît les principaux liens YouTube sans accepter un autre domaine', () => {
   assert.equal(parseYouTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),'dQw4w9WgXcQ');
@@ -28,6 +28,14 @@ test('sélectionne une piste audio YouTube publique sous la limite de taille', (
     {url:'https://evil.example/audio',mimeType:'audio/webm',contentLength:'1000',bitrate:128000},
   ]);
   assert.equal(selected?.url,'https://rr1---sn-abcd.googlevideo.com/videoplayback?clen=3000000');
+});
+
+test('récupère les informations publiques utilisables lorsqu’une vidéo est restreinte', () => {
+  const metadata = extractYouTubePublicMetadata('<meta property="og:title" content="Prévenir les chutes"><script>var data={"ownerChannelName":"Centre de formation","shortDescription":"Identifier les risques\\net choisir le balisage adapté."}</script>');
+  assert.deepEqual(metadata,{title:'Prévenir les chutes',author:'Centre de formation',description:'Identifier les risques et choisir le balisage adapté.'});
+  const block = sourcePromptBlock({kind:'video',url:'https://www.youtube.com/watch?v=dQw4w9WgXcQ',title:metadata.title,organization:metadata.author,text:metadata.description,analysisMethod:'public_metadata_visuals'});
+  assert.match(block,/Ne prétends pas avoir entendu la vidéo/);
+  assert.match(block,/aperçus visuels disponibles/);
 });
 
 test('encadre une source extérieure comme contenu documentaire', () => {

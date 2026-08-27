@@ -51,7 +51,8 @@ export async function POST(request: Request) {
     const citedUrls = collectCitedUrls(payload.output); const sources = [...files.map((file) => `Document importé : ${file.originalName}`),...(source ? [`${source.title} — ${source.url}`] : []),...citedUrls];
     const pptx = createPowerPoint({...deck,sources:[...new Set(sources)]}); const filename = safePresentationFilename(deck.title);
     await audit(user.id,'ai.presentation_generated','presentation',null,{slideCount:deck.slides.length + 1,fileCount:files.length,sourceKind:kind,research,analysisMethod:source?.analysisMethod ?? null},request);
-    return new Response(pptx.buffer as ArrayBuffer,{status:200,headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.presentationml.presentation','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'private, no-store','X-Presentation-Filename':encodeURIComponent(filename)}});
+    const sourceNotice = source?.analysisMethod === 'public_metadata_visuals' ? 'Vidéo restreinte : présentation fondée sur les informations publiques et les aperçus visuels.' : '';
+    return new Response(pptx.buffer as ArrayBuffer,{status:200,headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.presentationml.presentation','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'private, no-store','X-Presentation-Filename':encodeURIComponent(filename),'X-Source-Notice':encodeURIComponent(sourceNotice)}});
   } catch (error) { return jsonError(error); }
 }
 
