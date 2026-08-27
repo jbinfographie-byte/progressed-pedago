@@ -7,6 +7,7 @@ import { AppError, assertSameOrigin, jsonError, readJson } from '@/lib/http';
 import { createPowerPoint, safePresentationFilename, type PresentationDeck } from '@/lib/pptx';
 import { normalizeSourceKind, resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
 import { decryptSecret } from '@/lib/security';
+import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
 
 type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: string } };
 
@@ -14,19 +15,22 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request); const user = await requirePermission('useAi'); const body = await readJson(request);
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds.map(String).slice(0,5) : [];
-    const source = await resolveSourceMaterial(body); const kind = normalizeSourceKind(body.sourceKind);
+    const kind = normalizeSourceKind(body.sourceKind);
     if (kind === 'documents' && !fileIds.length) throw new AppError(400,'Ajoutez au moins un PDF ou un document pour créer la présentation.','PRESENTATION_DOCUMENT_REQUIRED');
     const rawPrompt = String(body.prompt ?? '').trim();
-    if (rawPrompt.length < 15 && !source && !fileIds.length) throw new AppError(400,'Décrivez le PowerPoint souhaité, ajoutez un document ou fournissez un lien.','PRESENTATION_SOURCE_REQUIRED');
-    const prompt = rawPrompt || 'Construis une présentation de formation claire à partir de la source fournie, avec une progression pédagogique, des exemples et une synthèse applicable.';
+    if (kind === 'prompt' && rawPrompt.length < 15 && !fileIds.length) throw new AppError(400,'Décrivez le PowerPoint souhaité, ajoutez un document ou fournissez un lien.','PRESENTATION_SOURCE_REQUIRED');
     const credential = (await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId,user.id)).limit(1))[0];
     if (!credential) throw new AppError(409,'Connectez d’abord votre clé OpenAI personnelle dans Connexions.','OPENAI_NOT_CONNECTED');
     const apiKey = await decryptSecret(credential.ciphertext,credential.iv,env.MASTER_ENCRYPTION_KEY);
+    const source = await resolveSourceMaterial(body,{transcribeMedia:(media) => transcribeMediaWithOpenAI(apiKey,media)});
+    if (rawPrompt.length < 15 && !source && !fileIds.length) throw new AppError(400,'Décrivez le PowerPoint souhaité, ajoutez un document ou fournissez un lien.','PRESENTATION_SOURCE_REQUIRED');
+    const prompt = rawPrompt || 'Construis une présentation de formation claire à partir de la source fournie, avec une progression pédagogique, des exemples et une synthèse applicable.';
     const files = fileIds.length ? await getDb().select().from(uploadedFiles).where(and(eq(uploadedFiles.trainerId,user.id),inArray(uploadedFiles.id,fileIds))) : [];
     const audience = String(body.audience ?? 'adultes en formation professionnelle').trim() || 'adultes en formation professionnelle';
     const slideCount = Math.max(6,Math.min(18,Number(body.slideCount) || 10));
     const requestText = `Crée un PowerPoint de formation en français.\nDemande : ${prompt}\nPublic : ${audience}\nNiveau : ${String(body.level ?? 'débutant')}\nNombre cible : ${slideCount} diapositives.\n\nLa narration doit suivre une progression pédagogique : contexte, notions essentielles, méthode, exemples, erreurs à éviter, mise en pratique et synthèse finale. Chaque diapositive doit avoir un seul message principal, un titre qui exprime une idée complète, un sous-titre facultatif et 2 à 5 puces courtes. N’invente aucune donnée ni source. Le contenu visible doit être destiné aux apprenants, sans consigne de production ni note interne.${sourcePromptBlock(source)}`;
     const content: Array<Record<string,unknown>> = [{type:'input_text',text:requestText}];
+    for (const imageUrl of source?.previewImageUrls ?? []) content.push({type:'input_image',image_url:imageUrl,detail:'low'});
     let totalBytes = 0;
     for (const file of files) {
       totalBytes += file.sizeBytes; if (totalBytes > 25 * 1024 * 1024) throw new AppError(413,'L’ensemble des documents dépasse 25 Mo pour une analyse.','FILES_TOO_LARGE');
@@ -46,7 +50,7 @@ export async function POST(request: Request) {
     if (!deck.title?.trim() || !Array.isArray(deck.slides) || deck.slides.length < 4) throw new AppError(502,'La présentation générée est incomplète. Relancez la demande.','OPENAI_INCOMPLETE_PRESENTATION');
     const citedUrls = collectCitedUrls(payload.output); const sources = [...files.map((file) => `Document importé : ${file.originalName}`),...(source ? [`${source.title} — ${source.url}`] : []),...citedUrls];
     const pptx = createPowerPoint({...deck,sources:[...new Set(sources)]}); const filename = safePresentationFilename(deck.title);
-    await audit(user.id,'ai.presentation_generated','presentation',null,{slideCount:deck.slides.length + 1,fileCount:files.length,sourceKind:kind,research},request);
+    await audit(user.id,'ai.presentation_generated','presentation',null,{slideCount:deck.slides.length + 1,fileCount:files.length,sourceKind:kind,research,analysisMethod:source?.analysisMethod ?? null},request);
     return new Response(pptx.buffer as ArrayBuffer,{status:200,headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.presentationml.presentation','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,'Cache-Control':'private, no-store','X-Presentation-Filename':encodeURIComponent(filename)}});
   } catch (error) { return jsonError(error); }
 }

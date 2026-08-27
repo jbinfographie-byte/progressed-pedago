@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeSourceKind, parseYouTubeVideoId, resolveSourceMaterial, sourcePromptBlock } from '../lib/source-ingestion.ts';
+import { isTrustedYouTubeMediaUrl, normalizeSourceKind, parseVimeoVideoId, parseYouTubeVideoId, resolveSourceMaterial, selectYouTubeAudioFormat, sourcePromptBlock } from '../lib/source-ingestion.ts';
 
 test('reconnaît les principaux liens YouTube sans accepter un autre domaine', () => {
   assert.equal(parseYouTubeVideoId('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),'dQw4w9WgXcQ');
@@ -12,6 +12,22 @@ test('reconnaît les principaux liens YouTube sans accepter un autre domaine', (
 test('normalise le point de départ du studio', () => {
   assert.equal(normalizeSourceKind('youtube'),'youtube');
   assert.equal(normalizeSourceKind('inconnu'),'prompt');
+});
+
+test('reconnaît Vimeo et protège le téléchargement audio YouTube', () => {
+  assert.equal(parseVimeoVideoId('https://vimeo.com/123456789'),'123456789');
+  assert.equal(parseVimeoVideoId('https://example.com/123456789'),null);
+  assert.equal(isTrustedYouTubeMediaUrl('https://rr1---sn-abcd.googlevideo.com/videoplayback?clen=2048'),true);
+  assert.equal(isTrustedYouTubeMediaUrl('https://googlevideo.com.evil.example/video'),false);
+});
+
+test('sélectionne une piste audio YouTube publique sous la limite de taille', () => {
+  const selected = selectYouTubeAudioFormat([
+    {url:'https://rr1---sn-abcd.googlevideo.com/videoplayback?clen=30000000',mimeType:'audio/webm; codecs="opus"',contentLength:'30000000',bitrate:48000},
+    {url:'https://rr1---sn-abcd.googlevideo.com/videoplayback?clen=3000000',mimeType:'audio/webm; codecs="opus"',contentLength:'3000000',bitrate:128000},
+    {url:'https://evil.example/audio',mimeType:'audio/webm',contentLength:'1000',bitrate:128000},
+  ]);
+  assert.equal(selected?.url,'https://rr1---sn-abcd.googlevideo.com/videoplayback?clen=3000000');
 });
 
 test('encadre une source extérieure comme contenu documentaire', () => {

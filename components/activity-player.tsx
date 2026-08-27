@@ -6,7 +6,7 @@ import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } fro
 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
-type SourceMedia = { kind: 'youtube'; url: string; embedUrl: string; title: string; videoId: string };
+type SourceMedia = { kind: 'youtube' | 'vimeo'; url: string; embedUrl: string; title: string; videoId: string } | { kind: 'direct'; url: string; title: string; mimeType: string };
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
@@ -23,7 +23,7 @@ export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity
             <div><button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button><button className="button dark" type="button" onClick={onClose}>Fermer</button></div>
           </header>
           <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
-          {sourceMedia && <section className="source-video"><div><span>Vidéo source</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir sur YouTube ↗</a></div><iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen /></section>}
+          {sourceMedia && <section className="source-video"><div><span>Vidéo source analysée</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir la source ↗</a></div>{sourceMedia.kind === 'direct' ? <video src={sourceMedia.url} controls preload="metadata" /> : <iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />}</section>}
           {activity.explanation && <details className="lesson-drawer lesson-panel" open><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><StructuredExplanation text={activity.explanation} /></details>}
           <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} /></main>
         </div>
@@ -34,9 +34,11 @@ export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity
 }
 
 function readSourceMedia(value: unknown): SourceMedia | null {
-  if (!value || typeof value !== 'object') return null; const media = value as Partial<SourceMedia>;
-  if (media.kind !== 'youtube' || !media.videoId || !/^[A-Za-z0-9_-]{11}$/.test(media.videoId)) return null;
-  return { kind:'youtube',videoId:media.videoId,url:`https://www.youtube.com/watch?v=${media.videoId}`,embedUrl:`https://www.youtube-nocookie.com/embed/${media.videoId}`,title:String(media.title ?? 'Vidéo YouTube') };
+  if (!value || typeof value !== 'object') return null; const media = value as Record<string,unknown>;
+  if (media.kind === 'youtube' && typeof media.videoId === 'string' && /^[A-Za-z0-9_-]{11}$/.test(media.videoId)) return {kind:'youtube',videoId:media.videoId,url:`https://www.youtube.com/watch?v=${media.videoId}`,embedUrl:`https://www.youtube-nocookie.com/embed/${media.videoId}`,title:String(media.title ?? 'Vidéo YouTube')};
+  if (media.kind === 'vimeo' && typeof media.videoId === 'string' && /^\d{5,12}$/.test(media.videoId)) return {kind:'vimeo',videoId:media.videoId,url:`https://vimeo.com/${media.videoId}`,embedUrl:`https://player.vimeo.com/video/${media.videoId}`,title:String(media.title ?? 'Vidéo Vimeo')};
+  if (media.kind === 'direct' && typeof media.url === 'string') { try { const url = new URL(media.url); const mimeType = String(media.mimeType ?? 'video/mp4'); if (url.protocol === 'https:' && !url.username && !url.password && (mimeType.startsWith('video/') || mimeType.startsWith('audio/'))) return {kind:'direct',url:url.toString(),title:String(media.title ?? 'Média en ligne'),mimeType}; } catch { return null; } }
+  return null;
 }
 
 function Mechanic({ type, content }: { type: ActivityType; content: Record<string, unknown> }) {
