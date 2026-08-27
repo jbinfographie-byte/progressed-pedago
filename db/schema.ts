@@ -115,6 +115,31 @@ export const activityContents = sqliteTable('activity_contents', {
   version: integer('version').notNull().default(1), contentJson: text('content_json').notNull(), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_activity_content_version').on(table.activityId, table.version)]);
 
+export const courseFolders = sqliteTable('course_folders', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  color: text('color', { enum: ['mint', 'blue', 'peach', 'aqua'] }).notNull().default('mint'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  index('idx_course_folders_owner_updated').on(table.trainerId, table.updatedAt),
+]);
+
+export const courseFolderItems = sqliteTable('course_folder_items', {
+  id: text('id').primaryKey(),
+  folderId: text('folder_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_course_folder_activity').on(table.folderId, table.activityId),
+  uniqueIndex('uq_course_folder_position').on(table.folderId, table.position),
+  index('idx_course_folder_items_activity').on(table.activityId),
+  check('ck_course_folder_position', sql`${table.position} >= 0`),
+]);
+
 export const questions = sqliteTable('questions', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(), contentJson: text('content_json').notNull(),

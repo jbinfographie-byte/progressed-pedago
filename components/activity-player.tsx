@@ -11,7 +11,7 @@ type SourceMedia = { kind: 'youtube' | 'vimeo'; url: string; embedUrl: string; t
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
 
-export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity; onClose: () => void }) {
+export function ActivityPlayer({ activity, onClose, journey }: { activity: PlayerActivity; onClose: () => void; journey?: {name:string;index:number;total:number;onPrevious?:()=>void;onNext?:()=>void} }) {
   const [fullscreen, setFullscreen] = useState(false);
   const sourceMedia = readSourceMedia(activity.content.sourceMedia);
   return (
@@ -19,8 +19,8 @@ export function ActivityPlayer({ activity, onClose }: { activity: PlayerActivity
       <section className="player-shell">
         <div className="screen-player-content">
           <header className="player-header">
-            <div><p className="overline">Activité en direct</p><h2 id="player-title">{activity.title}</h2><p>{activity.instructions}</p></div>
-            <div><button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button><button className="button dark" type="button" onClick={onClose}>Fermer</button></div>
+            <div><p className="overline">{journey ? `${journey.name} · étape ${journey.index + 1} sur ${journey.total}` : 'Activité en direct'}</p><h2 id="player-title">{activity.title}</h2><p>{activity.instructions}</p></div>
+            <div><button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button>{journey?.onPrevious && <button className="button light" type="button" onClick={journey.onPrevious}>← Étape précédente</button>}{journey?.onNext && <button className="button dark" type="button" onClick={journey.onNext}>Étape suivante →</button>}<button className={journey?.onNext ? 'button light' : 'button dark'} type="button" onClick={onClose}>{journey ? 'Quitter le parcours' : 'Fermer'}</button></div>
           </header>
           <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
           {sourceMedia && <section className="source-video"><div><span>Vidéo source analysée</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir la source ↗</a></div>{sourceMedia.kind === 'direct' ? <video src={sourceMedia.url} controls preload="metadata" /> : <iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />}</section>}
