@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ACTIVITY_TYPES, CREATABLE_ACTIVITY_TYPES, isCreatableActivityType, normalizeAnswer, validateActivityDraft, validateMechanic, type ActivityType } from '../lib/activity-types.ts';
+import { SCENARIO_EXAMPLE_CONTENT, validateScenarioContent } from '../lib/scenario.ts';
 
 function validContent(type: ActivityType): Record<string, unknown> {
   if (type === 'quiz' || type === 'tv-quiz') return { questions: [{ question: 'Q', choices: ['A','B'], correctIndex: 0 }] };
@@ -11,7 +12,7 @@ function validContent(type: ActivityType): Record<string, unknown> {
   if (['flip-tiles','revision-cards','random-cards','memory-cards','pair-or-not'].includes(type)) return { cards: [{ front: 'A', back: 'B' }] };
   if (type === 'type-answer') return { prompts: [{ question: 'Q', answer: 'A' }] };
   if (type === 'interactive-image') return { imageUrl: 'https://example.test/image.png', hotspots: [{ label: 'Zone' }] };
-  if (type === 'scenario') return { steps: [{ situation: 'S' }] };
+  if (type === 'scenario') return SCENARIO_EXAMPLE_CONTENT as unknown as Record<string,unknown>;
   if (type === 'live-poll') return { question: 'Q', options: ['A','B'] };
   if (type === 'challenge-wheel' || type === 'question-wheel') return { sectors: [{ label: 'A' },{ label: 'B' }] };
   if (type === 'categories') return { categories: [{ label: 'A' },{ label: 'B' }], items: [{ label: '1' },{ label: '2' }] };
@@ -39,6 +40,21 @@ for (const [type, label] of ACTIVITY_TYPES) {
 
 test('un quiz vide est rejeté', () => {
   assert.ok(validateMechanic('quiz', { questions: [] }).length > 0);
+});
+
+test('une mise en situation riche exige 3 à 5 scènes', () => {
+  assert.deepEqual(validateScenarioContent(SCENARIO_EXAMPLE_CONTENT as unknown as Record<string,unknown>), []);
+  assert.match(validateScenarioContent({ scenes: [],debrief:{} })[0] ?? '',/entre 3 et 5 scènes/);
+});
+
+test('une scène refuse un score hors barème et une destination inconnue', () => {
+  const invalid = JSON.parse(JSON.stringify(SCENARIO_EXAMPLE_CONTENT)) as Record<string,unknown>;
+  const scenes = invalid.scenes as Array<Record<string,unknown>>;
+  const choices = scenes[0].choices as Array<Record<string,unknown>>;
+  choices[0].score = 7; choices[0].nextSceneId = 'scene-absente';
+  const errors = validateScenarioContent(invalid).join(' ');
+  assert.match(errors,/0, 1 ou 2/);
+  assert.match(errors,/introuvable/);
 });
 
 test('les réponses saisies sont normalisées sans accent ni espaces parasites', () => {

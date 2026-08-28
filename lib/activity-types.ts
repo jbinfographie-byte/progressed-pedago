@@ -1,3 +1,5 @@
+import { validateScenarioContent } from './scenario.ts';
+
 export const ACTIVITY_TYPES = [
   ['quiz', 'Quiz interactif', 'Questions, réponses mélangées et explications'], ['drag-drop', 'Glisser-déposer', 'Déplacer des éléments vers les bonnes zones'],
   ['true-false', 'Vrai ou faux', 'Décider et comprendre la correction'], ['word-search', 'Mots mêlés', 'Retrouver les mots cachés dans une grille'],
@@ -49,7 +51,7 @@ export function validateMechanic(type: ActivityType, content: Record<string, unk
     case 'word-search': requireItems('grid'); requireItems('words'); break; case 'crossword': requireItems('grid'); requireItems('clues'); break; case 'hangman': requireItems('words'); break;
     case 'flip-tiles': case 'revision-cards': case 'random-cards': case 'memory-cards': case 'pair-or-not': requireItems('cards'); break;
     case 'type-answer': requireItems('prompts'); break; case 'interactive-image': if (!text(content.imageUrl)) errors.push('Une image est obligatoire.'); requireItems('hotspots'); break;
-    case 'scenario': requireItems('steps'); break; case 'live-poll': if (!text(content.question)) errors.push('La question du sondage est obligatoire.'); requireItems('options', 2); break;
+    case 'scenario': if (Array.isArray(content.scenes)) errors.push(...validateScenarioContent(content)); else requireItems('steps'); break; case 'live-poll': if (!text(content.question)) errors.push('La question du sondage est obligatoire.'); requireItems('options', 2); break;
     case 'challenge-wheel': case 'question-wheel': requireItems('sectors', 2); break; case 'categories': requireItems('categories', 2); requireItems('items', 2); break;
     case 'maze': requireItems('cells', 4); break; case 'flying-fruits': requireItems('prompts'); break; default: requireItems('items', 2);
   }

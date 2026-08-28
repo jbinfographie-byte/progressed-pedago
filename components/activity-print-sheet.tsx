@@ -1,4 +1,5 @@
 import { ACTIVITY_TYPES, type ActivityType } from '@/lib/activity-types';
+import { normalizeScenarioContent } from '@/lib/scenario';
 
 export type PrintableActivity = {
   type: ActivityType;
@@ -103,8 +104,8 @@ function PrintableMechanic({ type,content }: { type: ActivityType; content: Reco
   if (type === 'type-answer') return <PromptList values={((Array.isArray(content.prompts) ? content.prompts : []) as Array<{question?:string}>).map((item) => String(item.question ?? 'Question'))} />;
   if (type === 'maze') return <div className="print-maze">{items(content.cells).map((cell,index) => <span key={index}>{index === 0 ? 'Départ' : itemLabel(cell)}</span>)}</div>;
   if (type === 'scenario') {
-    const steps = (Array.isArray(content.steps) ? content.steps : []) as Array<{ situation?: string; choices?: Array<{label?:string}> }>;
-    return <div className="print-question-list">{steps.map((step,index) => <section className="print-question" key={index}><h3><span>{index + 1}</span>{step.situation}</h3><div className="print-choices">{(step.choices ?? []).map((choice,choiceIndex) => <p key={choiceIndex}><i>{String.fromCharCode(65 + choiceIndex)}</i>{choice.label}<b /></p>)}</div></section>)}</div>;
+    const scenario = normalizeScenarioContent(content);
+    return <div className="print-question-list print-scenario-list">{scenario.scenes.map((scene,index) => <section className="print-question print-scenario-scene" key={scene.id}><h3><span>{index + 1}</span>{scene.title}</h3><div className="print-scenario-context"><p><strong>Lieu et moment</strong>{scene.location} · {scene.moment}</p><p><strong>Votre rôle</strong>{scene.learnerRole}</p><p><strong>Mission</strong>{scene.mission}</p><p><strong>Situation</strong>{scene.context}</p>{scene.dialogue && <blockquote>{scene.dialogue}</blockquote>}</div><h4>{scene.question}</h4><div className="print-choices">{scene.choices.map((choice,choiceIndex) => <p key={choice.id}><i>{String.fromCharCode(65 + choiceIndex)}</i>{choice.text}<b /></p>)}</div><div className="print-scenario-justification"><strong>Je justifie ma décision</strong><span /><span /></div></section>)}</div>;
   }
   if (type === 'live-poll') return <PromptList title={String(content.question ?? 'Votre avis')} values={(Array.isArray(content.options) ? content.options : []).map(String)} checkboxes />;
   if (type === 'interactive-image') return <div className="print-image-activity"><div>Zone de l’image / du schéma</div><ol>{items(content.hotspots).map((hotspot,index) => <li key={index}>{itemLabel(hotspot)} : ............................................................</li>)}</ol></div>;
@@ -130,8 +131,8 @@ function PrintableAnswers({ type,content }: { type: ActivityType; content: Recor
     return <div className="print-answer-list">{prompts.map((prompt,index) => <section key={index}><h3>{index + 1}. {prompt.question}</h3><p className="print-answer"><strong>Réponse :</strong> {prompt.answer}</p>{prompt.explanation && <StructuredExplanation text={prompt.explanation} compact />}</section>)}</div>;
   }
   if (type === 'scenario') {
-    const steps = (Array.isArray(content.steps) ? content.steps : []) as Array<{situation?:string;choices?:Array<{label?:string;consequence?:string}>}>;
-    return <div className="print-answer-list">{steps.map((step,index) => <section key={index}><h3>{index + 1}. {step.situation}</h3>{(step.choices ?? []).map((choice,choiceIndex) => <p key={choiceIndex}><strong>{choice.label} :</strong> {choice.consequence}</p>)}</section>)}</div>;
+    const scenario = normalizeScenarioContent(content);
+    return <div className="print-answer-list print-scenario-answers">{scenario.scenes.map((scene,index) => <section key={scene.id}><h3>{index + 1}. {scene.title}</h3><p><strong>Objectif :</strong> {scene.objective}</p>{scene.choices.map((choice,choiceIndex) => <div className={`print-scenario-answer score-${choice.score}`} key={choice.id}><p><strong>{String.fromCharCode(65 + choiceIndex)} · {choice.score}/2 — {choice.text}</strong></p><p><b>Conséquence :</b> {choice.consequence}</p><p><b>Conduite recommandée :</b> {choice.recommendedConduct}</p><p>{choice.explanation}</p></div>)}</section>)}<section className="print-scenario-debrief"><h3>{scenario.debrief.title}</h3><p>{scenario.debrief.summary}</p><strong>Bonnes pratiques</strong><ul>{scenario.debrief.bestPractices.map((item) => <li key={item}>{item}</li>)}</ul><strong>Questions de débrief</strong><ul>{scenario.debrief.trainerQuestions.map((item) => <li key={item}>{item}</li>)}</ul></section></div>;
   }
   const answers = items(content.items).filter((item) => item.answer || item.category || item.correct);
   return answers.length ? <div className="print-answer-list">{answers.map((answer,index) => <section key={index}><h3>{index + 1}. {itemLabel(answer)}</h3><p>{String(answer.answer ?? answer.category ?? (answer.correct ? 'Correct' : ''))}</p></section>)}</div> : <p className="print-adaptation-note">Utilisez la synthèse ci-dessous pour animer la correction collective et demander aux participants de justifier leurs choix.</p>;

@@ -36,3 +36,11 @@ test('le contrôle refuse une explication détaillée trop courte', () => {
 test('une valeur inconnue revient au niveau détaillé', () => {
   assert.equal(normalizeExplanationDepth('inconnu'), 'detailed');
 });
+
+test('la génération de mise en situation exige des scènes progressives complètes', () => {
+  const prompt = buildGenerationPrompt('Créer une mise en situation en EHPAD',['scenario'],{scenarioCount:4,scenarioProfession:'Agent de bio-nettoyage',scenarioDifficulty:'progressive',scenarioSimpleFrench:true});
+  assert.match(prompt,/exactement 4 scènes/);
+  assert.match(prompt,/consequence, positivePoints, risks, recommendedConduct, explanation/);
+  assert.match(prompt,/jamais l’ancien format steps/);
+  assert.match(prompt,/français simple/);
+});
