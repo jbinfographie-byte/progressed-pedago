@@ -1,6 +1,6 @@
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { courseFolderFiles, courseFolders, learningPathItems, learningPaths, mainFolderFiles, mainFolders, uploadedFiles } from '@/db/schema';
+import { courseFolderFiles, courseFolders, externalResources, learningPathItems, learningPaths, mainFolderFiles, mainFolders, uploadedFiles } from '@/db/schema';
 import { audit, requirePermission, requireUser } from '@/lib/auth';
 import { normalizeFolderColor, normalizeFolderCoverUrl, normalizeFolderLongDescription, normalizeFolderName, normalizeFolderText, normalizeFolderTextList, normalizeTrainingDuration, normalizeTrainingLevel, normalizeTrainingStatus } from '@/lib/course-folders';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
@@ -16,10 +16,11 @@ export async function GET() {
     const paths = trainings.length ? await getDb().select().from(learningPaths).where(and(eq(learningPaths.trainerId,user.id),inArray(learningPaths.trainingId,trainings.map((training) => training.id)))) : [];
     const pathItems = paths.length ? await getDb().select().from(learningPathItems).where(inArray(learningPathItems.pathId,paths.map((path) => path.id))).orderBy(learningPathItems.position) : [];
     const trainingFiles = trainings.length ? await getDb().select().from(courseFolderFiles).where(inArray(courseFolderFiles.folderId,trainings.map((training) => training.id))).orderBy(courseFolderFiles.position) : [];
+    const trainingResources = trainings.length ? await getDb().select().from(externalResources).where(and(eq(externalResources.trainerId,user.id),inArray(externalResources.trainingId,trainings.map((training) => training.id)))).orderBy(externalResources.createdAt) : [];
     const themeFiles = themes.length ? await getDb().select().from(mainFolderFiles).where(inArray(mainFolderFiles.mainFolderId,themes.map((theme) => theme.id))).orderBy(mainFolderFiles.position) : [];
     return jsonOk({
       mainFolders:themes.map((theme) => ({...theme,keywords:JSON.parse(theme.keywordsJson),competencies:JSON.parse(theme.competenciesJson),fileItems:themeFiles.filter((item) => item.mainFolderId === theme.id).map(({fileId,position}) => ({fileId,position}))})),
-      folders:trainings.map((training) => { const path = paths.find((candidate) => candidate.trainingId === training.id); return {...training,prerequisites:JSON.parse(training.prerequisitesJson),objectives:JSON.parse(training.objectivesJson),competencies:JSON.parse(training.competenciesJson),fileItems:trainingFiles.filter((item) => item.folderId === training.id).map(({fileId,position}) => ({fileId,position})),path:path ? {...path,items:pathItems.filter((item) => item.pathId === path.id).map(({activityId,position,required,minScore,unlockAfterPrevious}) => ({activityId,position,required,minScore,unlockAfterPrevious}))} : null}; }),
+      folders:trainings.map((training) => { const path = paths.find((candidate) => candidate.trainingId === training.id); return {...training,prerequisites:JSON.parse(training.prerequisitesJson),objectives:JSON.parse(training.objectivesJson),competencies:JSON.parse(training.competenciesJson),fileItems:trainingFiles.filter((item) => item.folderId === training.id).map(({fileId,position}) => ({fileId,position})),resources:trainingResources.filter((item) => item.trainingId === training.id).map((item)=>({...item,metadata:JSON.parse(item.metadataJson)})),path:path ? {...path,items:pathItems.filter((item) => item.pathId === path.id).map(({activityId,position,required,minScore,unlockAfterPrevious}) => ({activityId,position,required,minScore,unlockAfterPrevious}))} : null}; }),
       libraryFiles,
     });
   } catch (error) { return jsonError(error); }

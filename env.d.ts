@@ -9,5 +9,11 @@ declare namespace Cloudflare {
     RESEND_API_KEY?: string;
     RESEND_FROM_EMAIL?: string;
     NEXT_PUBLIC_SITE_URL?: string;
+    MICROSOFT_CLIENT_ID?: string;
+    MICROSOFT_CLIENT_SECRET?: string;
+    GOOGLE_CLIENT_ID?: string;
+    GOOGLE_CLIENT_SECRET?: string;
+    CANVA_CLIENT_ID?: string;
+    CANVA_CLIENT_SECRET?: string;
   }
 }

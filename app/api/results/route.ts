@@ -1,6 +1,6 @@
 import { and, desc, eq, like, or } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, courseFolders, learnerResults, learningPathItems, learningPaths, mainFolders } from '@/db/schema';
+import { activities, courseFolders, learnerResults, learningPathItems, learningPaths, mainFolders, trainingShares } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 
@@ -12,10 +12,12 @@ export async function GET(request: Request) {
     const activityId = params.get('activityId')?.trim();
     const trainingId = params.get('trainingId')?.trim();
     const mainFolderId = params.get('mainFolderId')?.trim();
+    const shareId = params.get('shareId')?.trim();
     const clauses = [eq(learnerResults.trainerId,user.id)];
     if (activityId) clauses.push(eq(learnerResults.activityId,activityId));
     if (trainingId) clauses.push(eq(learnerResults.trainingId,trainingId));
     if (mainFolderId) clauses.push(eq(courseFolders.mainFolderId,mainFolderId));
+    if (shareId) clauses.push(eq(learnerResults.shareId,shareId));
     if (search) clauses.push(or(like(learnerResults.learnerFirstName,`%${search}%`),like(learnerResults.learnerLastName,`%${search}%`))!);
     const rows = await getDb().select({
       id:learnerResults.id,
@@ -25,6 +27,10 @@ export async function GET(request: Request) {
       trainingTitle:courseFolders.name,
       mainFolderId:courseFolders.mainFolderId,
       mainFolderTitle:mainFolders.name,
+      shareId:learnerResults.shareId,
+      participantId:learnerResults.participantId,
+      sessionShortCode:trainingShares.shortCode,
+      sessionMode:trainingShares.mode,
       learnerFirstName:learnerResults.learnerFirstName,
       learnerLastName:learnerResults.learnerLastName,
       score:learnerResults.score,
@@ -38,9 +44,12 @@ export async function GET(request: Request) {
       .innerJoin(activities,eq(learnerResults.activityId,activities.id))
       .leftJoin(courseFolders,eq(learnerResults.trainingId,courseFolders.id))
       .leftJoin(mainFolders,eq(courseFolders.mainFolderId,mainFolders.id))
+      .leftJoin(trainingShares,eq(learnerResults.shareId,trainingShares.id))
       .where(and(...clauses))
       .orderBy(desc(learnerResults.createdAt));
-    return jsonOk({results:rows.map((row)=>({...row,answers:JSON.parse(row.answersJson)}))});
+    const sessions = await getDb().select({id:trainingShares.id,trainingId:trainingShares.trainingId,shortCode:trainingShares.shortCode,mode:trainingShares.mode,status:trainingShares.status,createdAt:trainingShares.createdAt})
+      .from(trainingShares).where(eq(trainingShares.trainerId,user.id)).orderBy(desc(trainingShares.createdAt));
+    return jsonOk({results:rows.map((row)=>({...row,answers:JSON.parse(row.answersJson)})),sessions});
   } catch(error) { return jsonError(error); }
 }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { ACTIVITY_TYPES, normalizeAnswer, type ActivityType } from '@/lib/activity-types';
 import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } from '@/components/activity-print-sheet';
 import { normalizeScenarioContent, type ScenarioChoice, type ScenarioCitation } from '@/lib/scenario';
@@ -8,7 +8,8 @@ import { normalizeScenarioContent, type ScenarioChoice, type ScenarioCitation } 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
 type SourceMedia = { kind: 'youtube' | 'vimeo'; url: string; embedUrl: string; title: string; videoId: string } | { kind: 'direct'; url: string; title: string; mimeType: string };
-type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;onPrevious?:()=>void;onNext?:()=>void};
+export type JourneyCompletion = {score?:number;maxScore?:number;answers?:unknown[];durationSeconds?:number};
+export type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;onPrevious?:()=>void;onNext?:()=>void;onComplete?:(result?:JourneyCompletion)=>void|Promise<void>;completed?:boolean;timeline?:ReactNode;resourcePanel?:ReactNode};
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
@@ -17,19 +18,21 @@ export function ActivityPlayer({ activity, onClose, journey }: { activity: Playe
   const [fullscreen, setFullscreen] = useState(false);
   const [lessonOpen,setLessonOpen] = useState(activity.type !== 'scenario');
   const sourceMedia = readSourceMedia(activity.content.sourceMedia);
+  const gradedActivity=['quiz','tv-quiz','true-false','scenario'].includes(activity.type);
   return (
     <div className={`player-backdrop ${fullscreen ? 'is-fullscreen' : ''}`} role="dialog" aria-modal="true" aria-labelledby="player-title">
-      <section className="player-shell">
-        <div className="screen-player-content">
+      <section className={`player-shell ${journey?.timeline?'journey-player-shell':''}`}>
+        <div className="player-learning-layout"><div className="screen-player-content">
           <header className="player-header">
             <div><p className="overline">{journey ? `${journey.name} · étape ${journey.index + 1} sur ${journey.total}` : 'Activité en direct'}</p><h2 id="player-title">{activity.title}</h2><p>{activity.instructions}</p></div>
-            <div>{activity.explanation && <button className="button light" type="button" aria-expanded={lessonOpen} onClick={() => setLessonOpen((value) => !value)}>{lessonOpen ? 'Masquer le cours' : 'Voir le cours'}</button>}<button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button>{journey?.onPrevious && <button className="button light" type="button" onClick={journey.onPrevious}>← Étape précédente</button>}{journey?.onNext && <button className="button dark" type="button" onClick={journey.onNext}>Étape suivante →</button>}<button className={journey?.onNext ? 'button light' : 'button dark'} type="button" onClick={onClose}>{journey ? 'Quitter le parcours' : 'Fermer'}</button></div>
+            <div>{activity.explanation && <button className="button light" type="button" aria-expanded={lessonOpen} onClick={() => setLessonOpen((value) => !value)}>{lessonOpen ? 'Masquer le cours' : 'Voir le cours'}</button>}<button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button>{journey?.onPrevious && <button className="button light" type="button" onClick={journey.onPrevious}>← Étape précédente</button>}{journey?.onComplete&&!gradedActivity && <button className="button dark" type="button" disabled={journey.completed} onClick={()=>void journey.onComplete?.()}>{journey.completed?'Étape terminée ✓':'Terminer cette étape'}</button>}{journey?.onNext && <button className="button dark" type="button" onClick={journey.onNext}>Étape suivante →</button>}<button className={journey?.onNext ? 'button light' : 'button dark'} type="button" onClick={onClose}>{journey ? 'Quitter le parcours' : 'Fermer'}</button></div>
           </header>
           <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
+          {journey?.resourcePanel}
           {sourceMedia && <section className="source-video"><div><span>Vidéo source analysée</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir la source ↗</a></div>{sourceMedia.kind === 'direct' ? <video src={sourceMedia.url} controls preload="metadata" /> : <iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />}</section>}
           {activity.explanation && <details className="lesson-drawer lesson-panel" open={lessonOpen} onToggle={(event) => setLessonOpen(event.currentTarget.open)}><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><StructuredExplanation text={activity.explanation} /></details>}
           <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} activity={activity} journey={journey} /></main>
-        </div>
+        </div>{journey?.timeline}</div>
         <ActivityPrintSheet activity={activity} />
       </section>
     </div>
@@ -45,8 +48,8 @@ function readSourceMedia(value: unknown): SourceMedia | null {
 }
 
 function Mechanic({ type, content,activity,journey }: { type: ActivityType; content: Record<string, unknown>; activity: PlayerActivity; journey?:JourneyContext }) {
-  if (type === 'quiz' || type === 'tv-quiz') return <Quiz content={content} televised={type === 'tv-quiz'} />;
-  if (type === 'true-false') return <TrueFalse content={content} />;
+  if (type === 'quiz' || type === 'tv-quiz') return <Quiz content={content} televised={type === 'tv-quiz'} journey={journey} />;
+  if (type === 'true-false') return <TrueFalse content={content} journey={journey} />;
   if (['flip-tiles','revision-cards','memory-cards','random-cards','pair-or-not'].includes(type)) return <Cards content={content} random={type === 'random-cards'} memory={type === 'memory-cards'} pair={type === 'pair-or-not'} />;
   if (type === 'challenge-wheel' || type === 'question-wheel') return <Wheel content={content} questionMode={type === 'question-wheel'} />;
   if (type === 'word-search') return <WordSearch content={content} />;
@@ -63,23 +66,25 @@ function Mechanic({ type, content,activity,journey }: { type: ActivityType; cont
   return <Classifier content={content} />;
 }
 
-function Quiz({ content, televised = false }: { content: Record<string, unknown>; televised?: boolean }) {
+function Quiz({ content, televised = false,journey }: { content: Record<string, unknown>; televised?: boolean;journey?:JourneyContext }) {
   const questions = (Array.isArray(content.questions) ? content.questions : []) as Array<{ question?: string; choices?: string[]; correctIndex?: number; explanation?: string }>;
-  const [index, setIndex] = useState(0); const [answer, setAnswer] = useState<number | null>(null); const [score, setScore] = useState(0); const question = questions[index];
+  const [index, setIndex] = useState(0); const [answer, setAnswer] = useState<number | null>(null); const [score, setScore] = useState(0); const [answers,setAnswers]=useState<number[]>([]);const[startedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false); const question = questions[index];
   if (!question) return <EmptyMechanic />;
-  const select = (choice: number) => { if (answer !== null) return; setAnswer(choice); if (choice === Number(question.correctIndex ?? 0)) setScore((value) => value + 1); };
+  const select = (choice: number) => { if (answer !== null) return; setAnswer(choice);setAnswers((values)=>[...values,choice]); if (choice === Number(question.correctIndex ?? 0)) setScore((value) => value + 1); };
+  const next=async()=>{if(index<questions.length-1){setIndex((value)=>value+1);setAnswer(null);return;}if(journey?.onComplete){setBusy(true);try{await journey.onComplete({score,maxScore:questions.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});}finally{setBusy(false);}}else{setIndex(0);setAnswer(null);setScore(0);setAnswers([]);}};
   return <div className={televised ? 'tv-board' : 'quiz-board'}>
     {televised && <div className="game-strip"><span>♥ ♥ ♥</span><strong>Score {score}</strong><span>{index + 1}/{questions.length}</span></div>}
     <p className="step-label">Question {index + 1} sur {questions.length}</p><h3>{question.question}</h3>
     <div className="choice-grid">{(question.choices ?? []).map((choice, choiceIndex) => <button type="button" key={choice} onClick={() => select(choiceIndex)} className={answer === null ? '' : choiceIndex === Number(question.correctIndex ?? 0) ? 'correct' : answer === choiceIndex ? 'wrong' : ''}><span>{String.fromCharCode(65 + choiceIndex)}</span>{choice}</button>)}</div>
-    {answer !== null && <div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer === Number(question.correctIndex ?? 0) ? 'Bonne réponse !' : 'À revoir'}</strong>{question.explanation ? <StructuredExplanation text={question.explanation} compact /> : <p>Relisez le mini-cours puis reformulez la règle avec vos propres mots.</p>}<button className="button dark" type="button" onClick={() => { setIndex((value) => (value + 1) % questions.length); setAnswer(null); }}>Question suivante</button></div>}
+    {answer !== null && <div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer === Number(question.correctIndex ?? 0) ? 'Bonne réponse !' : 'À revoir'}</strong>{question.explanation ? <StructuredExplanation text={question.explanation} compact /> : <p>Relisez le mini-cours puis reformulez la règle avec vos propres mots.</p>}<button className="button dark" type="button" disabled={busy||journey?.completed} onClick={()=>void next()}>{journey?.completed?'Résultat enregistré ✓':busy?'Enregistrement…':index===questions.length-1&&journey?'Enregistrer mon résultat':'Question suivante'}</button></div>}
   </div>;
 }
 
-function TrueFalse({ content }: { content: Record<string, unknown> }) {
+function TrueFalse({ content,journey }: { content: Record<string, unknown>;journey?:JourneyContext }) {
   const statements = (Array.isArray(content.statements) ? content.statements : []) as Array<{ text?: string; answer?: boolean; explanation?: string }>;
-  const [index, setIndex] = useState(0); const [choice, setChoice] = useState<boolean | null>(null); const item = statements[index]; if (!item) return <EmptyMechanic />;
-  return <div className="binary-board"><p className="step-label">Affirmation {index + 1}/{statements.length}</p><h3>{item.text}</h3><div><button type="button" onClick={() => setChoice(true)}>✓ Vrai</button><button type="button" onClick={() => setChoice(false)}>× Faux</button></div>{choice !== null && <div className="feedback-box detailed-feedback"><span className="feedback-label">Pourquoi ?</span><strong>{choice === Boolean(item.answer) ? 'Exact' : 'Pas tout à fait'}</strong>{item.explanation ? <StructuredExplanation text={item.explanation} compact /> : <p>Expliquez la règle qui permet de décider.</p>}<button className="button dark" type="button" onClick={() => { setIndex((value) => (value + 1) % statements.length); setChoice(null); }}>Continuer</button></div>}</div>;
+  const [index, setIndex] = useState(0); const [choice, setChoice] = useState<boolean | null>(null);const[score,setScore]=useState(0);const[answers,setAnswers]=useState<boolean[]>([]);const[startedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false); const item = statements[index]; if (!item) return <EmptyMechanic />;
+  const choose=(value:boolean)=>{if(choice!==null)return;setChoice(value);setAnswers((items)=>[...items,value]);if(value===Boolean(item.answer))setScore((current)=>current+1);};const next=async()=>{if(index<statements.length-1){setIndex((value)=>value+1);setChoice(null);return;}if(journey?.onComplete){setBusy(true);try{await journey.onComplete({score,maxScore:statements.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});}finally{setBusy(false);}}else{setIndex(0);setChoice(null);setScore(0);setAnswers([]);}};
+  return <div className="binary-board"><p className="step-label">Affirmation {index + 1}/{statements.length}</p><h3>{item.text}</h3><div><button type="button" onClick={() => choose(true)}>✓ Vrai</button><button type="button" onClick={() => choose(false)}>× Faux</button></div>{choice !== null && <div className="feedback-box detailed-feedback"><span className="feedback-label">Pourquoi ?</span><strong>{choice === Boolean(item.answer) ? 'Exact' : 'Pas tout à fait'}</strong>{item.explanation ? <StructuredExplanation text={item.explanation} compact /> : <p>Expliquez la règle qui permet de décider.</p>}<button className="button dark" type="button" disabled={busy||journey?.completed} onClick={()=>void next()}>{journey?.completed?'Résultat enregistré ✓':busy?'Enregistrement…':index===statements.length-1&&journey?'Enregistrer mon résultat':'Continuer'}</button></div>}</div>;
 }
 
 function Cards({ content, random, memory, pair }: { content: Record<string, unknown>; random?: boolean; memory?: boolean; pair?: boolean }) {
@@ -148,9 +153,9 @@ function Scenario({ content,activity,journey }: { content: Record<string, unknow
     setIndex(nextIndex); setSelectedId(''); setValidated(false);
   };
   const submitResult = async () => {
-    if (!activity.id || !firstName.trim() || !lastName.trim()) { setResultMessage(activity.id ? 'Renseignez votre prénom et votre nom.' : 'Ce mode aperçu ne peut pas enregistrer de résultat.'); return; }
+    if (!activity.id || (!journey?.onComplete && (!firstName.trim() || !lastName.trim()))) { setResultMessage(activity.id ? 'Renseignez votre prénom et votre nom.' : 'Ce mode aperçu ne peut pas enregistrer de résultat.'); return; }
     setSubmitting(true); setResultMessage('');
-    try { const response = await fetch('/api/results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activityId:activity.id,trainingId:journey?.trainingId,pathId:journey?.pathId,firstName,lastName,answers:decisions,score,maxScore,durationSeconds:Math.round((Date.now() - startedAt) / 1000),selfEvaluation:percentage >= 80 ? 'Maîtrisé' : percentage >= 50 ? 'En progression' : 'À renforcer'})}); const payload = await response.json() as {ok?:boolean;data?:{message?:string};error?:{message?:string}}; if (!response.ok || !payload.ok) throw new Error(payload.error?.message || 'Enregistrement impossible.'); setResultMessage(payload.data?.message || 'Votre résultat a été enregistré.'); }
+    try { if(journey?.onComplete){await journey.onComplete({score,maxScore,answers:decisions,durationSeconds:Math.round((Date.now()-startedAt)/1000)});setResultMessage('Votre décision et votre progression sont enregistrées.');}else{const response = await fetch('/api/results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activityId:activity.id,trainingId:journey?.trainingId,pathId:journey?.pathId,firstName,lastName,answers:decisions,score,maxScore,durationSeconds:Math.round((Date.now() - startedAt) / 1000),selfEvaluation:percentage >= 80 ? 'Maîtrisé' : percentage >= 50 ? 'En progression' : 'À renforcer'})}); const payload = await response.json() as {ok?:boolean;data?:{message?:string};error?:{message?:string}}; if (!response.ok || !payload.ok) throw new Error(payload.error?.message || 'Enregistrement impossible.'); setResultMessage(payload.data?.message || 'Votre résultat a été enregistré.');} }
     catch (reason) { setResultMessage(reason instanceof Error ? reason.message : 'Enregistrement impossible.'); }
     finally { setSubmitting(false); }
   };
@@ -159,7 +164,7 @@ function Scenario({ content,activity,journey }: { content: Record<string, unknow
     {scenario.scoreMode !== 'hidden' && <div className="scenario-score">{scenario.scoreMode === 'points' && <strong>{score}<small> / {maxScore} points</small></strong>}<span>{percentage}%</span><p>{percentage >= 80 ? 'Compétences maîtrisées' : percentage >= 50 ? 'Compétences en progression' : 'Points à renforcer'}</p></div>}
     <div className="scenario-debrief-grid"><section><h4>Vos décisions</h4>{decisions.map((decision,indexValue) => { const choice = scenario.scenes.find((item) => item.id === decision.sceneId)?.choices.find((item) => item.id === decision.choiceId); return <div className="scenario-debrief-decision" key={decision.sceneId}><p><span>{indexValue + 1}</span><strong>{decision.sceneTitle}</strong><small>{decision.choiceText}{scenario.scoreMode === 'points' ? ` · ${decision.score}/2` : ''}</small></p>{scenario.feedbackTiming === 'deferred' && choice && <div><strong>Conséquence</strong><p>{choice.consequence}</p><strong>Conduite recommandée</strong><p>{choice.recommendedConduct}</p><ScenarioSources values={choice.sources ?? []} compact /></div>}</div>; })}</section><section><h4>Compétences maîtrisées</h4><ul>{(masteredSkills.length ? masteredSkills : ['Poursuivre l’entraînement pour valider les compétences.']).map((item) => <li key={item}>{item}</li>)}</ul><h4>Compétences à renforcer</h4><ul>{(improvementSkills.length ? improvementSkills : ['Aucun point prioritaire détecté.']).map((item) => <li key={item}>{item}</li>)}</ul><h4>Bonnes pratiques à retenir</h4><ul>{scenario.debrief.bestPractices.map((item) => <li key={item}>{item}</li>)}</ul><h4>Points à retravailler</h4><ul>{scenario.debrief.pointsToReview.map((item) => <li key={item}>{item}</li>)}</ul></section></div>
     {!!scenario.debrief.trainerQuestions.length && <section className="scenario-trainer-questions"><h4>Questions pour le débrief collectif</h4>{scenario.debrief.trainerQuestions.map((item,indexValue) => <p key={item}>{indexValue + 1}. {item}</p>)}</section>}
-    <section className="scenario-result-form"><div><h4>Transmettre mon résultat</h4><p>Votre nom et votre progression seront visibles par le formateur.</p></div><label>Prénom<input value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Nom<input value={lastName} onChange={(event) => setLastName(event.target.value)} /></label><button className="button dark" type="button" onClick={submitResult} disabled={submitting}>{submitting ? 'Enregistrement…' : 'Envoyer mon résultat'}</button>{resultMessage && <p role="status">{resultMessage}</p>}</section>
+    <section className="scenario-result-form"><div><h4>{journey?.onComplete?'Enregistrer cette étape':'Transmettre mon résultat'}</h4><p>{journey?.onComplete?'Votre progression sera enregistrée dans ce parcours.':'Votre nom et votre progression seront visibles par le formateur.'}</p></div>{!journey?.onComplete&&<><label>Prénom<input value={firstName} onChange={(event) => setFirstName(event.target.value)} /></label><label>Nom<input value={lastName} onChange={(event) => setLastName(event.target.value)} /></label></>}<button className="button dark" type="button" onClick={submitResult} disabled={submitting||journey?.completed}>{submitting ? 'Enregistrement…' : journey?.completed?'Étape déjà enregistrée':'Enregistrer le résultat'}</button>{resultMessage && <p role="status">{resultMessage}</p>}</section>
   </section>;
   return <section className="scenario-board">
     <header className="scenario-progress"><div><p className="overline">Mise en situation · {activity.theme || 'Pratique professionnelle'}</p><h3>{scene.title}</h3></div><div><strong>Situation {index + 1} sur {scenario.scenes.length}</strong><span><i style={{width:`${(index + 1) / scenario.scenes.length * 100}%`}} /></span></div></header>

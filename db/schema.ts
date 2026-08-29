@@ -95,6 +95,42 @@ export const encryptedApiCredentials = sqliteTable('encrypted_api_credentials', 
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_api_credentials_trainer').on(table.trainerId)]);
 
+export const providerConnections = sqliteTable('provider_connections', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['microsoft', 'google', 'canva'] }).notNull(),
+  status: text('status', { enum: ['connected', 'error', 'disconnected'] }).notNull().default('connected'),
+  accountLabel: text('account_label').notNull().default(''),
+  accessTokenCiphertext: text('access_token_ciphertext').notNull(),
+  accessTokenIv: text('access_token_iv').notNull(),
+  refreshTokenCiphertext: text('refresh_token_ciphertext'),
+  refreshTokenIv: text('refresh_token_iv'),
+  scopesJson: text('scopes_json').notNull().default('[]'),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  expiresAt: integer('expires_at'),
+  lastTestedAt: integer('last_tested_at'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_provider_connections_owner_provider').on(table.trainerId, table.provider),
+  index('idx_provider_connections_owner_status').on(table.trainerId, table.status),
+]);
+
+export const oauthAuthorizations = sqliteTable('oauth_authorizations', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['microsoft', 'google', 'canva'] }).notNull(),
+  stateHash: text('state_hash').notNull(),
+  verifierCiphertext: text('verifier_ciphertext').notNull(),
+  verifierIv: text('verifier_iv').notNull(),
+  returnTo: text('return_to').notNull().default('/'),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_oauth_authorizations_state').on(table.stateHash),
+  index('idx_oauth_authorizations_owner_expiry').on(table.trainerId, table.expiresAt),
+]);
+
 export const activities = sqliteTable('pedago_activities', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -186,6 +222,80 @@ export const learningPathItems = sqliteTable('learning_path_items', {
   check('ck_learning_path_min_score', sql`${table.minScore} BETWEEN 0 AND 100`),
 ]);
 
+export const trainingShares = sqliteTable('training_shares', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  trainingId: text('training_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
+  pathId: text('path_id').notNull().references(() => learningPaths.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  tokenCiphertext: text('token_ciphertext').notNull(),
+  tokenIv: text('token_iv').notNull(),
+  shortCode: text('short_code').notNull(),
+  mode: text('mode', { enum: ['classroom', 'home'] }).notNull().default('home'),
+  identityMode: text('identity_mode', { enum: ['name', 'pseudonym', 'learner_code', 'anonymous'] }).notNull().default('name'),
+  status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
+  sessionOpen: integer('session_open', { mode: 'boolean' }).notNull().default(true),
+  expiresAt: integer('expires_at'),
+  maxAccesses: integer('max_accesses'),
+  accessCount: integer('access_count').notNull().default(0),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_training_shares_token').on(table.tokenHash),
+  uniqueIndex('uq_training_shares_short_code').on(table.shortCode),
+  index('idx_training_shares_owner_training').on(table.trainerId, table.trainingId, table.updatedAt),
+  index('idx_training_shares_status_expiry').on(table.status, table.expiresAt),
+  check('ck_training_shares_access_count', sql`${table.accessCount} >= 0`),
+]);
+
+export const learnerParticipants = sqliteTable('learner_participants', {
+  id: text('id').primaryKey(),
+  shareId: text('share_id').notNull().references(() => trainingShares.id, { onDelete: 'cascade' }),
+  browserTokenHash: text('browser_token_hash').notNull(),
+  resumeCodeHash: text('resume_code_hash').notNull(),
+  displayName: text('display_name').notNull().default('Apprenant anonyme'),
+  identityKind: text('identity_kind', { enum: ['name', 'pseudonym', 'learner_code', 'anonymous'] }).notNull().default('anonymous'),
+  lastPathItemId: text('last_path_item_id').references(() => learningPathItems.id, { onDelete: 'set null' }),
+  progressPercent: integer('progress_percent').notNull().default(0),
+  startedAt: integer('started_at').notNull().default(now),
+  lastSeenAt: integer('last_seen_at').notNull().default(now),
+  completedAt: integer('completed_at'),
+}, (table) => [
+  uniqueIndex('uq_learner_participants_browser').on(table.shareId, table.browserTokenHash),
+  uniqueIndex('uq_learner_participants_resume').on(table.shareId, table.resumeCodeHash),
+  index('idx_learner_participants_share_seen').on(table.shareId, table.lastSeenAt),
+  check('ck_learner_participants_progress', sql`${table.progressPercent} BETWEEN 0 AND 100`),
+]);
+
+export const learnerProgress = sqliteTable('learner_progress', {
+  id: text('id').primaryKey(),
+  participantId: text('participant_id').notNull().references(() => learnerParticipants.id, { onDelete: 'cascade' }),
+  pathItemId: text('path_item_id').notNull().references(() => learningPathItems.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['not_started', 'in_progress', 'completed', 'passed', 'retry'] }).notNull().default('not_started'),
+  score: integer('score'),
+  maxScore: integer('max_score'),
+  attempts: integer('attempts').notNull().default(0),
+  durationSeconds: integer('duration_seconds').notNull().default(0),
+  answersJson: text('answers_json').notNull().default('[]'),
+  startedAt: integer('started_at'),
+  completedAt: integer('completed_at'),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_progress_participant_item').on(table.participantId, table.pathItemId),
+  index('idx_learner_progress_activity_status').on(table.activityId, table.status, table.updatedAt),
+  check('ck_learner_progress_attempts', sql`${table.attempts} >= 0`),
+  check('ck_learner_progress_duration', sql`${table.durationSeconds} >= 0`),
+]);
+
+export const publicAccessEvents = sqliteTable('public_access_events', {
+  id: text('id').primaryKey(),
+  shareId: text('share_id').references(() => trainingShares.id, { onDelete: 'cascade' }),
+  ipHash: text('ip_hash'),
+  success: integer('success', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [index('idx_public_access_events_ip_date').on(table.ipHash, table.createdAt)]);
+
 export const courseFolderItems = sqliteTable('course_folder_items', {
   id: text('id').primaryKey(),
   folderId: text('folder_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
@@ -217,10 +327,11 @@ export const sources = sqliteTable('sources', {
 export const learnerResults = sqliteTable('learner_results', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   trainingId: text('training_id').references(() => courseFolders.id, { onDelete: 'set null' }), pathId: text('path_id').references(() => learningPaths.id, { onDelete: 'set null' }),
+  shareId: text('share_id').references(() => trainingShares.id, { onDelete: 'set null' }), participantId: text('participant_id').references(() => learnerParticipants.id, { onDelete: 'set null' }),
   learnerFirstName: text('learner_first_name').notNull(), learnerLastName: text('learner_last_name').notNull(), answersJson: text('answers_json').notNull().default('[]'),
   score: integer('score').notNull(), maxScore: integer('max_score').notNull(), percentage: integer('percentage').notNull(), durationSeconds: integer('duration_seconds').notNull().default(0),
   attempt: integer('attempt').notNull().default(1), selfEvaluation: text('self_evaluation'), createdAt: integer('created_at').notNull().default(now),
-}, (table) => [index('idx_results_owner_activity_date').on(table.trainerId, table.activityId, table.createdAt), index('idx_results_owner_training_date').on(table.trainerId, table.trainingId, table.createdAt), check('ck_results_score', sql`${table.score} >= 0 AND ${table.maxScore} > 0`), check('ck_results_percentage', sql`${table.percentage} BETWEEN 0 AND 100`)]);
+}, (table) => [index('idx_results_owner_activity_date').on(table.trainerId, table.activityId, table.createdAt), index('idx_results_owner_training_date').on(table.trainerId, table.trainingId, table.createdAt), index('idx_results_share_participant').on(table.shareId, table.participantId, table.createdAt), check('ck_results_score', sql`${table.score} >= 0 AND ${table.maxScore} > 0`), check('ck_results_percentage', sql`${table.percentage} BETWEEN 0 AND 100`)]);
 
 export const knowledgeFolders = sqliteTable('knowledge_folders', {
   id: text('id').primaryKey(),
@@ -416,8 +527,13 @@ export const mainFolderFiles = sqliteTable('main_folder_files', {
 ]);
 
 export const externalResources = sqliteTable('external_resources', {
-  id: text('id').primaryKey(), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }), name: text('name').notNull(), url: text('url').notNull(), category: text('category').notNull().default('Autre'), createdAt: integer('created_at').notNull().default(now),
-}, (table) => [index('idx_external_resources_owner_category').on(table.trainerId, table.category)]);
+  id: text('id').primaryKey(), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }), name: text('name').notNull(), url: text('url').notNull(), category: text('category').notNull().default('Autre'),
+  provider: text('provider').notNull().default('other'), resourceType: text('resource_type', { enum: ['link', 'video', 'presentation', 'document', 'embed', 'download'] }).notNull().default('link'),
+  trainingId: text('training_id').references(() => courseFolders.id, { onDelete: 'cascade' }), activityId: text('activity_id').references(() => activities.id, { onDelete: 'cascade' }),
+  placement: text('placement', { enum: ['before', 'after', 'course', 'instructions', 'help'] }).notNull().default('course'), required: integer('required', { mode: 'boolean' }).notNull().default(false),
+  openMode: text('open_mode', { enum: ['site', 'new_tab', 'download'] }).notNull().default('new_tab'), embedUrl: text('embed_url'), thumbnailUrl: text('thumbnail_url'), externalId: text('external_id'), metadataJson: text('metadata_json').notNull().default('{}'),
+  status: text('status', { enum: ['active', 'blocked'] }).notNull().default('active'), createdAt: integer('created_at').notNull().default(now), updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [index('idx_external_resources_owner_category').on(table.trainerId, table.category), index('idx_external_resources_training_activity').on(table.trainingId, table.activityId, table.createdAt)]);
 
 export const auditLogs = sqliteTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), action: text('action').notNull(), targetType: text('target_type').notNull(), targetId: text('target_id'), metadataJson: text('metadata_json').notNull().default('{}'), ipHash: text('ip_hash'), createdAt: integer('created_at').notNull().default(now),
