@@ -162,11 +162,172 @@ export const learnerResults = sqliteTable('learner_results', {
   attempt: integer('attempt').notNull().default(1), selfEvaluation: text('self_evaluation'), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_results_owner_activity_date').on(table.trainerId, table.activityId, table.createdAt), check('ck_results_score', sql`${table.score} >= 0 AND ${table.maxScore} > 0`), check('ck_results_percentage', sql`${table.percentage} BETWEEN 0 AND 100`)]);
 
+export const knowledgeFolders = sqliteTable('knowledge_folders', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  index('idx_knowledge_folders_owner_updated').on(table.trainerId, table.updatedAt),
+]);
+
 export const uploadedFiles = sqliteTable('uploaded_files', {
   id: text('id').primaryKey(), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }), objectKey: text('object_key').notNull(),
   originalName: text('original_name').notNull(), mimeType: text('mime_type').notNull(), sizeBytes: integer('size_bytes').notNull(),
-  status: text('status', { enum: ['uploaded', 'analyzing', 'ready', 'failed'] }).notNull().default('uploaded'), pageCount: integer('page_count'), analysisJson: text('analysis_json'), errorMessage: text('error_message'), createdAt: integer('created_at').notNull().default(now),
+  knowledgeFolderId: text('knowledge_folder_id').references(() => knowledgeFolders.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['uploaded', 'validating', 'extracting', 'analyzing', 'indexed', 'ready', 'failed'] }).notNull().default('uploaded'),
+  pageCount: integer('page_count'), detectedTheme: text('detected_theme'), summary: text('summary'), keywordsJson: text('keywords_json').notNull().default('[]'),
+  analysisJson: text('analysis_json'), errorMessage: text('error_message'), contentCreatedCount: integer('content_created_count').notNull().default(0),
+  analyzedAt: integer('analyzed_at'), createdAt: integer('created_at').notNull().default(now), updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_uploaded_files_object_key').on(table.objectKey), index('idx_uploaded_files_owner_status').on(table.trainerId, table.status)]);
+
+export const documentPages = sqliteTable('document_pages', {
+  id: text('id').primaryKey(),
+  fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  pageNumber: integer('page_number').notNull(),
+  title: text('title').notNull().default(''),
+  summary: text('summary').notNull().default(''),
+  notionsJson: text('notions_json').notNull().default('[]'),
+  proceduresJson: text('procedures_json').notNull().default('[]'),
+  risksJson: text('risks_json').notNull().default('[]'),
+  rulesJson: text('rules_json').notNull().default('[]'),
+  examplesJson: text('examples_json').notNull().default('[]'),
+  audiencesJson: text('audiences_json').notNull().default('[]'),
+  objectivesJson: text('objectives_json').notNull().default('[]'),
+  level: text('level', { enum: ['debutant', 'intermediaire', 'avance'] }).notNull().default('debutant'),
+  readingQuality: text('reading_quality', { enum: ['good', 'partial', 'illegible'] }).notNull().default('good'),
+  warningsJson: text('warnings_json').notNull().default('[]'),
+  excludedInformationJson: text('excluded_information_json').notNull().default('[]'),
+  selected: integer('selected', { mode: 'boolean' }).notNull().default(true),
+  trainerNotes: text('trainer_notes').notNull().default(''),
+  validatedAt: integer('validated_at'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_document_pages_file_page').on(table.fileId, table.pageNumber),
+  index('idx_document_pages_owner_file').on(table.trainerId, table.fileId, table.pageNumber),
+  check('ck_document_pages_page_positive', sql`${table.pageNumber} > 0`),
+]);
+
+export const documentChunks = sqliteTable('document_chunks', {
+  id: text('id').primaryKey(),
+  fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
+  pageId: text('page_id').notNull().references(() => documentPages.id, { onDelete: 'cascade' }),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull().default(0),
+  title: text('title').notNull().default(''),
+  textContent: text('text_content').notNull(),
+  keywordsJson: text('keywords_json').notNull().default('[]'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_document_chunks_page_position').on(table.pageId, table.position),
+  index('idx_document_chunks_owner_file').on(table.trainerId, table.fileId, table.pageId),
+]);
+
+export const documentIndexes = sqliteTable('document_indexes', {
+  id: text('id').primaryKey(),
+  fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  algorithm: text('algorithm').notNull().default('page-summary-v1'),
+  chunkCount: integer('chunk_count').notNull().default(0),
+  indexJson: text('index_json').notNull().default('{}'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_document_indexes_file').on(table.fileId),
+  index('idx_document_indexes_owner').on(table.trainerId, table.updatedAt),
+]);
+
+export const generationJobs = sqliteTable('generation_jobs', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  fileId: text('file_id').references(() => uploadedFiles.id, { onDelete: 'set null' }),
+  kind: text('kind', { enum: ['document_analysis', 'scenario_preparation', 'activity_generation'] }).notNull(),
+  status: text('status', { enum: ['draft', 'running', 'reviewing', 'ready', 'failed'] }).notNull().default('draft'),
+  attempt: integer('attempt').notNull().default(1),
+  progress: integer('progress').notNull().default(0),
+  errorCode: text('error_code'),
+  errorMessage: text('error_message'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  index('idx_generation_jobs_owner_status').on(table.trainerId, table.status, table.updatedAt),
+  check('ck_generation_jobs_attempt_positive', sql`${table.attempt} > 0`),
+  check('ck_generation_jobs_progress_range', sql`${table.progress} BETWEEN 0 AND 100`),
+]);
+
+export const scenarioProjects = sqliteTable('scenario_projects', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').references(() => activities.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['preparing', 'reviewing', 'generating', 'ready', 'failed'] }).notNull().default('preparing'),
+  fileIdsJson: text('file_ids_json').notNull().default('[]'),
+  briefJson: text('brief_json').notNull().default('{}'),
+  settingsJson: text('settings_json').notNull().default('{}'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [index('idx_scenario_projects_owner_status').on(table.trainerId, table.status, table.updatedAt)]);
+
+export const scenarioScenes = sqliteTable('scenario_scenes', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').references(() => scenarioProjects.id, { onDelete: 'set null' }),
+  position: integer('position').notNull(),
+  title: text('title').notNull(),
+  contentJson: text('content_json').notNull(),
+  sourcesJson: text('sources_json').notNull().default('[]'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_scenario_scenes_activity_position').on(table.activityId, table.position),
+  index('idx_scenario_scenes_owner_activity').on(table.trainerId, table.activityId),
+]);
+
+export const scenarioChoices = sqliteTable('scenario_choices', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  sceneId: text('scene_id').notNull().references(() => scenarioScenes.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+  score: integer('score').notNull(),
+  contentJson: text('content_json').notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_scenario_choices_scene_position').on(table.sceneId, table.position),
+  index('idx_scenario_choices_owner_scene').on(table.trainerId, table.sceneId),
+  check('ck_scenario_choices_score', sql`${table.score} BETWEEN 0 AND 2`),
+]);
+
+export const documentActivityLinks = sqliteTable('document_activity_links', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  pagesJson: text('pages_json').notNull().default('[]'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_document_activity_link').on(table.fileId, table.activityId),
+  index('idx_document_activity_links_owner_activity').on(table.trainerId, table.activityId),
+]);
+
+export const sourceCitations = sqliteTable('source_citations', {
+  id: text('id').primaryKey(),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  fileId: text('file_id').references(() => uploadedFiles.id, { onDelete: 'set null' }),
+  sceneId: text('scene_id'),
+  choiceId: text('choice_id'),
+  pageNumber: integer('page_number'),
+  passage: text('passage').notNull().default(''),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  index('idx_source_citations_owner_activity').on(table.trainerId, table.activityId),
+  index('idx_source_citations_file_page').on(table.fileId, table.pageNumber),
+]);
 
 export const courseFolderFiles = sqliteTable('course_folder_files', {
   id: text('id').primaryKey(),

@@ -42,9 +42,16 @@ test('un quiz vide est rejeté', () => {
   assert.ok(validateMechanic('quiz', { questions: [] }).length > 0);
 });
 
-test('une mise en situation riche exige 3 à 5 scènes', () => {
+test('un parcours progressif riche exige 3 à 6 scènes', () => {
   assert.deepEqual(validateScenarioContent(SCENARIO_EXAMPLE_CONTENT as unknown as Record<string,unknown>), []);
-  assert.match(validateScenarioContent({ scenes: [],debrief:{} })[0] ?? '',/entre 3 et 5 scènes/);
+  assert.match(validateScenarioContent({ mode:'progressive',scenes: [],debrief:{} })[0] ?? '',/entre 3 et 6 scènes/);
+});
+
+test('une mise en situation autonome peut contenir une seule scène', () => {
+  const single = JSON.parse(JSON.stringify(SCENARIO_EXAMPLE_CONTENT)) as Record<string,unknown>;
+  single.mode = 'single'; single.scenes = (single.scenes as unknown[]).slice(0,1);
+  for (const choice of ((single.scenes as Array<Record<string,unknown>>)[0].choices as Array<Record<string,unknown>>)) choice.nextSceneId = null;
+  assert.deepEqual(validateScenarioContent(single),[]);
 });
 
 test('une scène refuse un score hors barème et une destination inconnue', () => {

@@ -1,9 +1,10 @@
 import { env } from 'cloudflare:workers';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, activityContents, encryptedApiCredentials, uploadedFiles } from '@/db/schema';
+import { activities, activityContents, documentActivityLinks, documentPages, encryptedApiCredentials, scenarioChoices, scenarioProjects, scenarioScenes, sourceCitations, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { ActivityDraft, ActivityType, isCreatableActivityType, validateActivityDraft } from '@/lib/activity-types';
+import { buildKnowledgeContext, rankKnowledgePages } from '@/lib/document-knowledge';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { decryptSecret } from '@/lib/security';
 import { buildGenerationPrompt, validateGeneratedExplanation } from '@/lib/generation-guidance';
@@ -14,7 +15,7 @@ type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: s
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); const body = await readJson(request); const fileIds = Array.isArray(body.fileIds) ? body.fileIds.map(String).slice(0, 5) : []; const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
+    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); const body = await readJson(request); const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8); const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
     if (sourceKind === 'documents' && !fileIds.length) throw new AppError(400, 'Ajoutez au moins un PDF ou un document à analyser.', 'DOCUMENT_REQUIRED');
     if (sourceKind === 'prompt' && rawPrompt.length < 15 && !fileIds.length) throw new AppError(400, 'Décrivez le cours souhaité, ajoutez un document ou fournissez un lien.', 'PROMPT_TOO_SHORT');
     const requested = Array.isArray(body.formats) ? body.formats.map(String) : [String(body.type ?? 'quiz')];
@@ -27,7 +28,24 @@ export async function POST(request: Request) {
     if (rawPrompt.length < 15 && !source && !fileIds.length) throw new AppError(400, 'Décrivez le cours souhaité, ajoutez un document ou fournissez un lien.', 'PROMPT_TOO_SHORT');
     const prompt = rawPrompt || 'Crée un cours complet et une activité pédagogique à partir de la source fournie, avec des exemples professionnels et des corrections détaillées.';
     const files = fileIds.length ? await getDb().select().from(uploadedFiles).where(and(eq(uploadedFiles.trainerId, user.id), inArray(uploadedFiles.id, fileIds))) : [];
-    const content: Array<Record<string, unknown>> = [{ type: 'input_text', text: buildGenerationPrompt(prompt, formats, body) + sourcePromptBlock(source) }];
+    if (files.length !== fileIds.length) throw new AppError(404, 'Un document sélectionné est introuvable dans votre base privée.', 'DOCUMENT_NOT_FOUND');
+    const selectedKnowledgeRows = fileIds.length ? await getDb().select({
+      fileId: documentPages.fileId, originalName: uploadedFiles.originalName, pageNumber: documentPages.pageNumber, title: documentPages.title, summary: documentPages.summary,
+      notionsJson: documentPages.notionsJson, proceduresJson: documentPages.proceduresJson, risksJson: documentPages.risksJson, rulesJson: documentPages.rulesJson,
+      examplesJson: documentPages.examplesJson, audiencesJson: documentPages.audiencesJson, objectivesJson: documentPages.objectivesJson, level: documentPages.level,
+      readingQuality: documentPages.readingQuality, warningsJson: documentPages.warningsJson, excludedInformationJson:documentPages.excludedInformationJson, trainerNotes: documentPages.trainerNotes,
+    }).from(documentPages).innerJoin(uploadedFiles, eq(uploadedFiles.id, documentPages.fileId)).where(and(eq(documentPages.trainerId, user.id), eq(documentPages.selected, true), inArray(documentPages.fileId, fileIds))) : [];
+    const knowledgeRows = rankKnowledgePages(selectedKnowledgeRows,`${prompt} ${JSON.stringify(body.scenarioBrief ?? {})}`,40);
+    const knowledgeContext = buildKnowledgeContext(knowledgeRows);
+    if (formats.includes('scenario') && fileIds.length && knowledgeContext.length < 200) throw new AppError(422, 'Analysez les documents puis sélectionnez des pages suffisamment renseignées avant de générer la mise en situation.', 'DOCUMENT_CONTENT_INSUFFICIENT');
+    const projectId = typeof body.projectId === 'string' ? body.projectId : '';
+    if (projectId) {
+      const project = (await getDb().select().from(scenarioProjects).where(and(eq(scenarioProjects.id, projectId), eq(scenarioProjects.trainerId, user.id))).limit(1))[0];
+      if (!project) throw new AppError(404, 'Cette préparation de scénario est introuvable.', 'SCENARIO_PROJECT_NOT_FOUND');
+    }
+    const briefBlock = body.scenarioBrief && typeof body.scenarioBrief === 'object' ? `\n\nCADRAGE VALIDÉ PAR LE FORMATEUR :\n${JSON.stringify(body.scenarioBrief)}` : '';
+    const knowledgeBlock = knowledgeContext ? `\n\nBASE DOCUMENTAIRE PRIVÉE — utiliser uniquement les informations ci-dessous et citer chaque scène avec documentId et pageNumber :\n${knowledgeContext}` : '';
+    const content: Array<Record<string, unknown>> = [{ type: 'input_text', text: buildGenerationPrompt(prompt, formats, body) + sourcePromptBlock(source) + briefBlock + knowledgeBlock }];
     for (const imageUrl of source?.previewImageUrls ?? []) content.push({ type:'input_image',image_url:imageUrl,detail:'low' });
     let totalBytes = 0;
     for (const file of files) {
@@ -48,11 +66,29 @@ export async function POST(request: Request) {
     let parsed: { activities: Array<Omit<ActivityDraft, 'content'> & { contentJson: string }> };
     try { parsed = JSON.parse(outputText) as typeof parsed; } catch { throw new AppError(502, 'La génération reçue est invalide. Relancez la demande.', 'OPENAI_INVALID_JSON'); }
     const citedUrls = collectCitedUrls(payload.output);
-    const drafts = parsed.activities.map((item) => { let mechanic: Record<string, unknown>; try { mechanic = JSON.parse(item.contentJson) as Record<string, unknown>; } catch { throw new AppError(502, `La mécanique de « ${item.title} » est invalide.`, 'OPENAI_INVALID_MECHANIC'); } const verifiedSources = (item.sources ?? []).filter((candidate) => { try { const url = new URL(candidate.url); return url.protocol === 'https:' && (!research || citedUrls.has(candidate.url)); } catch { return false; } }); const userSource = source ? { title:source.title,organization:source.organization,url:source.url,usedFor:source.analysisMethod === 'public_metadata_visuals' ? 'Titre, description et aperçus publics de la vidéo restreinte' : source.kind === 'video' ? 'Audio, images et contenu de la vidéo' : 'Contenu de la page fournie' } : null; const sources = userSource && !verifiedSources.some((candidate) => candidate.url === userSource.url) ? [...verifiedSources,userSource] : verifiedSources; const enrichedMechanic = source?.media ? { ...mechanic,sourceMedia:source.media } : mechanic; return { ...item, sources, content: enrichedMechanic } as ActivityDraft; });
+    const documentSources = files.map((file) => { const pages = knowledgeRows.filter((row) => row.fileId === file.id).map((row) => row.pageNumber); return { title:file.originalName,organization:'Base documentaire privée',url:`/api/files/${file.id}?preview=1`,usedFor:pages.length ? `Pages ${pages.join(', ')}` : 'Document joint' }; });
+    const drafts = parsed.activities.map((item) => { let mechanic: Record<string, unknown>; try { mechanic = JSON.parse(item.contentJson) as Record<string, unknown>; } catch { throw new AppError(502, `La mécanique de « ${item.title} » est invalide.`, 'OPENAI_INVALID_MECHANIC'); } const verifiedSources = (item.sources ?? []).filter((candidate) => { try { const url = new URL(candidate.url); return url.protocol === 'https:' && (!research || citedUrls.has(candidate.url)); } catch { return false; } }); const userSource = source ? { title:source.title,organization:source.organization,url:source.url,usedFor:source.analysisMethod === 'public_metadata_visuals' ? 'Titre, description et aperçus publics de la vidéo restreinte' : source.kind === 'video' ? 'Audio, images et contenu de la vidéo' : 'Contenu de la page fournie' } : null; const sources = userSource && !verifiedSources.some((candidate) => candidate.url === userSource.url) ? [...verifiedSources,userSource,...documentSources] : [...verifiedSources,...documentSources]; const enrichedMechanic = source?.media ? { ...mechanic,sourceMedia:source.media } : mechanic; return { ...item, sources, content: enrichedMechanic } as ActivityDraft; });
     if (drafts.length !== formats.length) throw new AppError(502, 'La génération ne contient pas tous les formats demandés.', 'OPENAI_INCOMPLETE_BUNDLE');
-    for (const draft of drafts) { const validation = validateActivityDraft(draft); if (!validation.valid) throw new AppError(502, `Contrôle qualité : ${validation.errors.join(' ')}`, 'OPENAI_QUALITY_REJECTED'); const explanationError = validateGeneratedExplanation(draft, body.explanationDepth); if (explanationError) throw new AppError(502, `Contrôle qualité : ${explanationError}`, 'OPENAI_EXPLANATION_TOO_SHORT'); }
+    const allowedPages = new Set(knowledgeRows.map((row) => `${row.fileId}:${row.pageNumber}`));
+    for (const draft of drafts) { const validation = validateActivityDraft(draft); if (!validation.valid) throw new AppError(502, `Contrôle qualité : ${validation.errors.join(' ')}`, 'OPENAI_QUALITY_REJECTED'); const explanationError = validateGeneratedExplanation(draft, body.explanationDepth); if (explanationError) throw new AppError(502, `Contrôle qualité : ${explanationError}`, 'OPENAI_EXPLANATION_TOO_SHORT'); if (draft.type === 'scenario' && fileIds.length) { const citationError = validateScenarioCitations(draft.content, allowedPages); if (citationError) throw new AppError(502, `Contrôle des sources : ${citationError}`, 'OPENAI_SOURCE_REJECTED'); } }
     const now = Math.floor(Date.now() / 1000); const created = drafts.map((draft) => ({ id: crypto.randomUUID(), draft }));
-    const statements = created.flatMap(({ id, draft }) => [getDb().insert(activities).values({ id, trainerId: user.id, type: draft.type, title: draft.title, theme: draft.theme, audience: draft.audience, level: draft.level, objectivesJson: JSON.stringify(draft.objectives), durationMinutes: draft.durationMinutes, instructions: draft.instructions, contentJson: JSON.stringify(draft.content), explanation: draft.explanation, correction: draft.correction, sourcesJson: JSON.stringify(draft.sources), status: 'draft', qualityScore: 90, createdAt: now, updatedAt: now }), getDb().insert(activityContents).values({ id: crypto.randomUUID(), activityId: id, version: 1, contentJson: JSON.stringify(draft), createdAt: now })]);
+    const statements: unknown[] = created.flatMap(({ id, draft }) => {
+      const citations = collectScenarioCitations(draft.content);
+      const structuredScenes: unknown[] = [];
+      if (draft.type === 'scenario' && Array.isArray(draft.content.scenes)) for (const [sceneIndex,sceneValue] of draft.content.scenes.entries()) {
+        if (!sceneValue || typeof sceneValue !== 'object') continue;
+        const scene = sceneValue as Record<string,unknown>; const sceneRowId = crypto.randomUUID();
+        structuredScenes.push(getDb().insert(scenarioScenes).values({ id:sceneRowId,trainerId:user.id,activityId:id,projectId:projectId || null,position:sceneIndex,title:String(scene.title ?? `Situation ${sceneIndex + 1}`).slice(0,300),contentJson:JSON.stringify(scene),sourcesJson:JSON.stringify(Array.isArray(scene.sources) ? scene.sources : []),createdAt:now,updatedAt:now }));
+        for (const [choiceIndex,choiceValue] of (Array.isArray(scene.choices) ? scene.choices : []).entries()) {
+          if (!choiceValue || typeof choiceValue !== 'object') continue;
+          const choice = choiceValue as Record<string,unknown>; const score = Math.min(2,Math.max(0,Number(choice.score) || 0));
+          structuredScenes.push(getDb().insert(scenarioChoices).values({ id:crypto.randomUUID(),trainerId:user.id,sceneId:sceneRowId,position:choiceIndex,score,contentJson:JSON.stringify(choice),createdAt:now,updatedAt:now }));
+        }
+      }
+      return [getDb().insert(activities).values({ id, trainerId: user.id, type: draft.type, title: draft.title, theme: draft.theme, audience: draft.audience, level: draft.level, objectivesJson: JSON.stringify(draft.objectives), durationMinutes: draft.durationMinutes, instructions: draft.instructions, contentJson: JSON.stringify(draft.content), explanation: draft.explanation, correction: draft.correction, sourcesJson: JSON.stringify(draft.sources), status: 'draft', qualityScore: 90, createdAt: now, updatedAt: now }), getDb().insert(activityContents).values({ id: crypto.randomUUID(), activityId: id, version: 1, contentJson: JSON.stringify(draft), createdAt: now }), ...fileIds.map((fileId) => getDb().insert(documentActivityLinks).values({ id:crypto.randomUUID(),trainerId:user.id,fileId,activityId:id,pagesJson:JSON.stringify(knowledgeRows.filter((row) => row.fileId === fileId).map((row) => row.pageNumber)),createdAt:now })), ...citations.map((citation) => getDb().insert(sourceCitations).values({ id:crypto.randomUUID(),trainerId:user.id,activityId:id,fileId:citation.documentId,sceneId:citation.sceneId,choiceId:citation.choiceId,pageNumber:citation.pageNumber,passage:citation.passage,createdAt:now })),...structuredScenes];
+    });
+    if (fileIds.length) statements.push(...fileIds.map((fileId) => getDb().update(uploadedFiles).set({ contentCreatedCount: sql`${uploadedFiles.contentCreatedCount} + ${created.length}`, updatedAt: now }).where(and(eq(uploadedFiles.id,fileId),eq(uploadedFiles.trainerId,user.id)))));
+    if (projectId) { const scenarioActivity = created.find(({draft}) => draft.type === 'scenario'); if (scenarioActivity) statements.push(getDb().update(scenarioProjects).set({ status:'ready',activityId:scenarioActivity.id,briefJson:JSON.stringify(body.scenarioBrief ?? {}),settingsJson:JSON.stringify({scenarioCount:body.scenarioCount,scenarioDifficulty:body.scenarioDifficulty,scenarioProgressive:body.scenarioProgressive,scenarioSimpleFrench:body.scenarioSimpleFrench}),updatedAt:now }).where(and(eq(scenarioProjects.id,projectId),eq(scenarioProjects.trainerId,user.id)))); }
     await getDb().batch(statements as unknown as Parameters<ReturnType<typeof getDb>['batch']>[0]);
     await audit(user.id, 'ai.bundle_generated', 'activity_bundle', null, { count: created.length, formats, fileCount: files.length, research, sourceKind, analysisMethod:source?.analysisMethod ?? null }, request);
     const sourceNotice = source?.analysisMethod === 'audio_transcription' ? ' La piste audio de la vidéo a été transcrite automatiquement.' : source?.analysisMethod === 'public_metadata_visuals' ? ' La vidéo étant restreinte, le cours a été construit à partir de son titre, de sa description publique et de ses aperçus visuels. Importez un fichier autorisé pour une analyse audio complète.' : '';
@@ -65,3 +101,42 @@ function findOutputText(output: unknown): string { if (!Array.isArray(output)) r
 function collectCitedUrls(output: unknown): Set<string> { const urls = new Set<string>(); const visit = (value: unknown) => { if (!value || typeof value !== 'object') return; if (Array.isArray(value)) return value.forEach(visit); for (const [key, nested] of Object.entries(value as Record<string, unknown>)) { if (key === 'url' && typeof nested === 'string') urls.add(nested); else visit(nested); } }; visit(output); return urls; }
 function arrayBufferToBase64(buffer: ArrayBuffer): string { const bytes = new Uint8Array(buffer); let result = ''; for (let offset = 0; offset < bytes.length; offset += 8192) result += String.fromCharCode(...bytes.subarray(offset, offset + 8192)); return btoa(result); }
 function openAIError(status: number, code?: string) { if (status === 401) return new AppError(400, 'La clé OpenAI enregistrée est invalide. Reconnectez-la dans Connexions.', 'OPENAI_INVALID_KEY'); if (status === 429 || code?.includes('quota')) return new AppError(429, 'Le quota OpenAI est dépassé ou la facturation est inactive.', 'OPENAI_QUOTA'); if (status === 403) return new AppError(403, 'Le modèle choisi n’est pas accessible avec cette clé OpenAI.', 'OPENAI_FORBIDDEN'); if (status >= 500) return new AppError(503, 'OpenAI est momentanément indisponible.', 'OPENAI_UNAVAILABLE'); return new AppError(502, 'La génération a été interrompue par OpenAI.', 'OPENAI_ERROR'); }
+
+type StoredCitation = { documentId:string;pageNumber:number;passage:string;sceneId:string;choiceId:string | null };
+function collectScenarioCitations(content: Record<string, unknown>): StoredCitation[] {
+  const scenes = Array.isArray(content.scenes) ? content.scenes : [];
+  const citations: StoredCitation[] = [];
+  for (const sceneValue of scenes) {
+    if (!sceneValue || typeof sceneValue !== 'object') continue;
+    const scene = sceneValue as Record<string, unknown>; const sceneId = String(scene.id ?? '');
+    addCitations(citations, scene.sources, sceneId, null);
+    for (const choiceValue of Array.isArray(scene.choices) ? scene.choices : []) {
+      if (!choiceValue || typeof choiceValue !== 'object') continue;
+      const choice = choiceValue as Record<string, unknown>;
+      addCitations(citations, choice.sources, sceneId, String(choice.id ?? '') || null);
+    }
+  }
+  return citations;
+}
+function addCitations(target: StoredCitation[], value: unknown, sceneId: string, choiceId: string | null) {
+  if (!Array.isArray(value)) return;
+  for (const citationValue of value) {
+    if (!citationValue || typeof citationValue !== 'object') continue;
+    const citation = citationValue as Record<string, unknown>;
+    const documentId = String(citation.documentId ?? ''); const pageNumber = Number(citation.pageNumber);
+    if (documentId && Number.isInteger(pageNumber) && pageNumber > 0) target.push({ documentId, pageNumber, passage:String(citation.passage ?? '').slice(0,1_000), sceneId, choiceId });
+  }
+}
+function validateScenarioCitations(content: Record<string, unknown>, allowedPages: Set<string>): string | null {
+  const scenes = Array.isArray(content.scenes) ? content.scenes : [];
+  for (const [index, sceneValue] of scenes.entries()) {
+    if (!sceneValue || typeof sceneValue !== 'object') return `la scène ${index + 1} est invalide.`;
+    const scene = sceneValue as Record<string, unknown>;
+    const sceneCitations: StoredCitation[] = [];
+    addCitations(sceneCitations, scene.sources, String(scene.id ?? ''), null);
+    if (!sceneCitations.length) return `la scène ${index + 1} ne cite aucune page du document.`;
+    for (const citation of sceneCitations) if (!allowedPages.has(`${citation.documentId}:${citation.pageNumber}`)) return `la scène ${index + 1} cite une page absente ou non sélectionnée.`;
+  }
+  for (const citation of collectScenarioCitations(content)) if (!allowedPages.has(`${citation.documentId}:${citation.pageNumber}`)) return 'une correction cite une page absente ou non sélectionnée.';
+  return null;
+}

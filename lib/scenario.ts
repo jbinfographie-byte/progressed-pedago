@@ -1,3 +1,9 @@
+export type ScenarioCitation = {
+  documentId: string;
+  pageNumber: number;
+  passage: string;
+};
+
 export type ScenarioChoice = {
   id: string;
   text: string;
@@ -9,6 +15,7 @@ export type ScenarioChoice = {
   explanation: string;
   nextSceneId?: string | null;
   source?: string;
+  sources?: ScenarioCitation[];
 };
 
 export type ScenarioScene = {
@@ -30,13 +37,20 @@ export type ScenarioScene = {
   usefulInformation: string[];
   documents: string[];
   question: string;
+  sources?: ScenarioCitation[];
   choices: ScenarioChoice[];
 };
 
 export type ScenarioContent = {
   version: 2;
+  mode: 'single' | 'independent' | 'progressive' | 'successive' | 'case-study' | 'final-assessment';
   progressive: boolean;
   simplifiedFrench: boolean;
+  feedbackTiming: 'immediate' | 'deferred';
+  scoreMode: 'points' | 'skills' | 'hidden';
+  showHints: boolean;
+  addImages: boolean;
+  outputs: string[];
   scenes: ScenarioScene[];
   debrief: {
     title: string;
@@ -54,7 +68,8 @@ const stringValue = (value: unknown, fallback = ''): string => typeof value === 
 export function validateScenarioContent(content: Record<string, unknown>): string[] {
   const errors: string[] = [];
   const scenes = Array.isArray(content.scenes) ? content.scenes : [];
-  if (scenes.length < 3 || scenes.length > 5) return ['La mise en situation doit contenir entre 3 et 5 scènes progressives.'];
+  const progressiveMode = content.mode === 'progressive' || content.mode === 'successive';
+  if (scenes.length < (progressiveMode ? 3 : 1) || scenes.length > 6) return [progressiveMode ? 'Un parcours progressif doit contenir entre 3 et 6 scènes.' : 'La mise en situation doit contenir entre 1 et 6 scènes.'];
   const sceneIds = new Set<string>();
   for (const [sceneIndex,value] of scenes.entries()) {
     const scene = record(value);
@@ -75,7 +90,9 @@ export function validateScenarioContent(content: Record<string, unknown>): strin
       if (![0,1,2].includes(score)) errors.push(`Le choix ${choiceIndex + 1} de la scène ${sceneIndex + 1} doit être noté 0, 1 ou 2.`);
       if (score === 2) hasRecommended = true;
       for (const key of ['consequence','recommendedConduct','explanation']) if (!stringValue(choice[key])) errors.push(`Le choix ${choiceIndex + 1} de la scène ${sceneIndex + 1} doit renseigner « ${key} ».`);
+      validateCitations(choice.sources, `le choix ${choiceIndex + 1} de la scène ${sceneIndex + 1}`, errors);
     }
+    validateCitations(scene.sources, `la scène ${sceneIndex + 1}`, errors);
     if (!hasRecommended) errors.push(`La scène ${sceneIndex + 1} doit contenir au moins une conduite recommandée notée 2.`);
   }
   const sceneIndexes = new Map(Array.from(sceneIds).map((id,index) => [id,index]));
@@ -98,8 +115,14 @@ export function normalizeScenarioContent(content: Record<string, unknown>): Scen
     const debrief = record(content.debrief);
     return {
       version: 2,
+      mode: content.mode === 'single' || content.mode === 'independent' || content.mode === 'successive' || content.mode === 'case-study' || content.mode === 'final-assessment' ? content.mode : 'progressive',
       progressive: content.progressive !== false,
       simplifiedFrench: content.simplifiedFrench !== false,
+      feedbackTiming: content.feedbackTiming === 'deferred' ? 'deferred' : 'immediate',
+      scoreMode: content.scoreMode === 'skills' || content.scoreMode === 'hidden' ? content.scoreMode : 'points',
+      showHints: content.showHints !== false,
+      addImages: content.addImages === true,
+      outputs: stringList(content.outputs),
       scenes,
       debrief: {
         title: stringValue(debrief?.title,'Bilan de la mise en situation'),
@@ -128,22 +151,45 @@ export function normalizeScenarioContent(content: Record<string, unknown>): Scen
     });
     return normalizeScene({ id:`scene-${index + 1}`,title:`Situation ${index + 1}`,context:stringValue(step.situation),problem:stringValue(step.situation),question:'Quelle réaction professionnelle choisissez-vous ?',choices },index);
   }).filter((scene): scene is ScenarioScene => Boolean(scene));
-  return { version:2,progressive:true,simplifiedFrench:true,scenes,debrief:{ title:'Bilan de la mise en situation',summary:'Reprenez les décisions prises et justifiez la conduite professionnelle la plus adaptée.',bestPractices:['Observer la situation avant d’agir.','Respecter la personne, les consignes et le protocole.','Transmettre les informations utiles.'],pointsToReview:['Argumenter chaque décision.'],trainerQuestions:['Quelle décision modifieriez-vous après le débrief ?'] } };
+  return { version:2,mode:'progressive',progressive:true,simplifiedFrench:true,feedbackTiming:'immediate',scoreMode:'points',showHints:true,addImages:false,outputs:['digital','a4','learner','trainer'],scenes,debrief:{ title:'Bilan de la mise en situation',summary:'Reprenez les décisions prises et justifiez la conduite professionnelle la plus adaptée.',bestPractices:['Observer la situation avant d’agir.','Respecter la personne, les consignes et le protocole.','Transmettre les informations utiles.'],pointsToReview:['Argumenter chaque décision.'],trainerQuestions:['Quelle décision modifieriez-vous après le débrief ?'] } };
 }
 
 function normalizeScene(value: unknown,index: number): ScenarioScene | null {
   const scene = record(value); if (!scene) return null;
   const choices = (Array.isArray(scene.choices) ? scene.choices : []).map((choiceValue,choiceIndex) => {
     const choice = record(choiceValue); const score = Number(choice?.score);
-    return { id:stringValue(choice?.id,`choice-${index + 1}-${choiceIndex + 1}`),text:stringValue(choice?.text ?? choice?.label,`Décision ${choiceIndex + 1}`),score:([0,1,2].includes(score) ? score : 0) as 0 | 1 | 2,consequence:stringValue(choice?.consequence,'Conséquence à analyser.'),positivePoints:stringList(choice?.positivePoints),risks:stringList(choice?.risks),recommendedConduct:stringValue(choice?.recommendedConduct,'Se référer au protocole et transmettre l’information utile.'),explanation:stringValue(choice?.explanation ?? choice?.consequence,'Expliquez le lien entre la décision et la pratique professionnelle.'),nextSceneId:typeof choice?.nextSceneId === 'string' || choice?.nextSceneId === null ? choice.nextSceneId as string | null : undefined,source:stringValue(choice?.source) || undefined };
+    return { id:stringValue(choice?.id,`choice-${index + 1}-${choiceIndex + 1}`),text:stringValue(choice?.text ?? choice?.label,`Décision ${choiceIndex + 1}`),score:([0,1,2].includes(score) ? score : 0) as 0 | 1 | 2,consequence:stringValue(choice?.consequence,'Conséquence à analyser.'),positivePoints:stringList(choice?.positivePoints),risks:stringList(choice?.risks),recommendedConduct:stringValue(choice?.recommendedConduct,'Se référer au protocole et transmettre l’information utile.'),explanation:stringValue(choice?.explanation ?? choice?.consequence,'Expliquez le lien entre la décision et la pratique professionnelle.'),nextSceneId:typeof choice?.nextSceneId === 'string' || choice?.nextSceneId === null ? choice.nextSceneId as string | null : undefined,source:stringValue(choice?.source) || undefined,sources:normalizeCitations(choice?.sources) };
   });
-  return { id:stringValue(scene.id,`scene-${index + 1}`),title:stringValue(scene.title,`Situation ${index + 1}`),location:stringValue(scene.location,'Lieu de travail'),moment:stringValue(scene.moment,'Pendant l’intervention'),learnerRole:stringValue(scene.learnerRole,'Professionnel en situation'),people:stringList(scene.people),context:stringValue(scene.context,'Analysez la situation professionnelle présentée.'),problem:stringValue(scene.problem, stringValue(scene.context)),constraints:stringList(scene.constraints),dialogue:stringValue(scene.dialogue) || undefined,imageUrl:stringValue(scene.imageUrl) || undefined,mission:stringValue(scene.mission,'Choisir une réaction puis justifier sa décision.'),objective:stringValue(scene.objective,'Adapter son intervention à la situation.'),competencies:stringList(scene.competencies),observationCriteria:stringList(scene.observationCriteria),usefulInformation:stringList(scene.usefulInformation),documents:stringList(scene.documents),question:stringValue(scene.question,'Quelle réaction professionnelle choisissez-vous ?'),choices };
+  return { id:stringValue(scene.id,`scene-${index + 1}`),title:stringValue(scene.title,`Situation ${index + 1}`),location:stringValue(scene.location,'Lieu de travail'),moment:stringValue(scene.moment,'Pendant l’intervention'),learnerRole:stringValue(scene.learnerRole,'Professionnel en situation'),people:stringList(scene.people),context:stringValue(scene.context,'Analysez la situation professionnelle présentée.'),problem:stringValue(scene.problem, stringValue(scene.context)),constraints:stringList(scene.constraints),dialogue:stringValue(scene.dialogue) || undefined,imageUrl:stringValue(scene.imageUrl) || undefined,mission:stringValue(scene.mission,'Choisir une réaction puis justifier sa décision.'),objective:stringValue(scene.objective,'Adapter son intervention à la situation.'),competencies:stringList(scene.competencies),observationCriteria:stringList(scene.observationCriteria),usefulInformation:stringList(scene.usefulInformation),documents:stringList(scene.documents),question:stringValue(scene.question,'Quelle réaction professionnelle choisissez-vous ?'),sources:normalizeCitations(scene.sources),choices };
+}
+
+function normalizeCitations(value: unknown): ScenarioCitation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const citation = record(item); const documentId = stringValue(citation?.documentId); const pageNumber = Number(citation?.pageNumber);
+    return documentId && Number.isInteger(pageNumber) && pageNumber > 0 ? [{ documentId, pageNumber, passage:stringValue(citation?.passage) }] : [];
+  });
+}
+
+function validateCitations(value: unknown, label: string, errors: string[]) {
+  if (value === undefined) return;
+  if (!Array.isArray(value)) { errors.push(`Les sources de ${label} sont invalides.`); return; }
+  for (const citationValue of value) {
+    const citation = record(citationValue);
+    if (!citation || !stringValue(citation.documentId) || !Number.isInteger(Number(citation.pageNumber)) || Number(citation.pageNumber) < 1) errors.push(`Une citation de ${label} ne précise pas un document et une page valides.`);
+  }
 }
 
 export const SCENARIO_EXAMPLE_CONTENT: ScenarioContent = {
   version: 2,
+  mode: 'progressive',
   progressive: true,
   simplifiedFrench: true,
+  feedbackTiming: 'immediate',
+  scoreMode: 'points',
+  showHints: true,
+  addImages: false,
+  outputs: ['digital','a4','learner','trainer'],
   scenes: [
     {
       id:'scene-1',title:'Préparer une intervention en chambre',location:'EHPAD · couloir du secteur B',moment:'Début de la tournée du matin',learnerRole:'Agent de bio-nettoyage',people:['Le résident','L’aide-soignante référente'],
