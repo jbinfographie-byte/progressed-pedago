@@ -8,11 +8,12 @@ import { normalizeScenarioContent, type ScenarioChoice, type ScenarioCitation } 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
 type SourceMedia = { kind: 'youtube' | 'vimeo'; url: string; embedUrl: string; title: string; videoId: string } | { kind: 'direct'; url: string; title: string; mimeType: string };
+type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;onPrevious?:()=>void;onNext?:()=>void};
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
 
-export function ActivityPlayer({ activity, onClose, journey }: { activity: PlayerActivity; onClose: () => void; journey?: {name:string;index:number;total:number;onPrevious?:()=>void;onNext?:()=>void} }) {
+export function ActivityPlayer({ activity, onClose, journey }: { activity: PlayerActivity; onClose: () => void; journey?: JourneyContext }) {
   const [fullscreen, setFullscreen] = useState(false);
   const [lessonOpen,setLessonOpen] = useState(activity.type !== 'scenario');
   const sourceMedia = readSourceMedia(activity.content.sourceMedia);
@@ -27,7 +28,7 @@ export function ActivityPlayer({ activity, onClose, journey }: { activity: Playe
           <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
           {sourceMedia && <section className="source-video"><div><span>Vidéo source analysée</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir la source ↗</a></div>{sourceMedia.kind === 'direct' ? <video src={sourceMedia.url} controls preload="metadata" /> : <iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />}</section>}
           {activity.explanation && <details className="lesson-drawer lesson-panel" open={lessonOpen} onToggle={(event) => setLessonOpen(event.currentTarget.open)}><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><StructuredExplanation text={activity.explanation} /></details>}
-          <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} activity={activity} /></main>
+          <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} activity={activity} journey={journey} /></main>
         </div>
         <ActivityPrintSheet activity={activity} />
       </section>
@@ -43,7 +44,7 @@ function readSourceMedia(value: unknown): SourceMedia | null {
   return null;
 }
 
-function Mechanic({ type, content,activity }: { type: ActivityType; content: Record<string, unknown>; activity: PlayerActivity }) {
+function Mechanic({ type, content,activity,journey }: { type: ActivityType; content: Record<string, unknown>; activity: PlayerActivity; journey?:JourneyContext }) {
   if (type === 'quiz' || type === 'tv-quiz') return <Quiz content={content} televised={type === 'tv-quiz'} />;
   if (type === 'true-false') return <TrueFalse content={content} />;
   if (['flip-tiles','revision-cards','memory-cards','random-cards','pair-or-not'].includes(type)) return <Cards content={content} random={type === 'random-cards'} memory={type === 'memory-cards'} pair={type === 'pair-or-not'} />;
@@ -55,7 +56,7 @@ function Mechanic({ type, content,activity }: { type: ActivityType; content: Rec
   if (['drag-drop','matching','categories','labelled-diagram'].includes(type)) return <Classifier content={content} />;
   if (type === 'type-answer') return <TypedAnswer content={content} />;
   if (type === 'maze') return <Maze content={content} />;
-  if (type === 'scenario') return <Scenario content={content} activity={activity} />;
+  if (type === 'scenario') return <Scenario content={content} activity={activity} journey={journey} />;
   if (type === 'live-poll') return <Poll content={content} />;
   if (type === 'interactive-image') return <InteractiveImage content={content} />;
   if (type === 'flying-fruits') return <FlyingFruits content={content} />;
@@ -132,7 +133,7 @@ function Maze({ content }: { content: Record<string, unknown> }) { const cells =
 
 type ScenarioDecision = { sceneId:string;sceneTitle:string;choiceId:string;choiceText:string;score:number;maxScore:2 };
 
-function Scenario({ content,activity }: { content: Record<string, unknown>; activity: PlayerActivity }) {
+function Scenario({ content,activity,journey }: { content: Record<string, unknown>; activity: PlayerActivity; journey?:JourneyContext }) {
   const scenario = normalizeScenarioContent(content); const [index,setIndex] = useState(0); const [selectedId,setSelectedId] = useState(''); const [validated,setValidated] = useState(false); const [decisions,setDecisions] = useState<ScenarioDecision[]>([]); const [completed,setCompleted] = useState(false); const [firstName,setFirstName] = useState(''); const [lastName,setLastName] = useState(''); const [resultMessage,setResultMessage] = useState(''); const [submitting,setSubmitting] = useState(false); const [startedAt] = useState(() => Date.now());
   const scene = scenario.scenes[index]; if (!scene) return <EmptyMechanic />;
   const choices = stableScenarioChoices(scene.choices,scene.id); const selected = choices.find((choice) => choice.id === selectedId);
@@ -149,7 +150,7 @@ function Scenario({ content,activity }: { content: Record<string, unknown>; acti
   const submitResult = async () => {
     if (!activity.id || !firstName.trim() || !lastName.trim()) { setResultMessage(activity.id ? 'Renseignez votre prénom et votre nom.' : 'Ce mode aperçu ne peut pas enregistrer de résultat.'); return; }
     setSubmitting(true); setResultMessage('');
-    try { const response = await fetch('/api/results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activityId:activity.id,firstName,lastName,answers:decisions,score,maxScore,durationSeconds:Math.round((Date.now() - startedAt) / 1000),selfEvaluation:percentage >= 80 ? 'Maîtrisé' : percentage >= 50 ? 'En progression' : 'À renforcer'})}); const payload = await response.json() as {ok?:boolean;data?:{message?:string};error?:{message?:string}}; if (!response.ok || !payload.ok) throw new Error(payload.error?.message || 'Enregistrement impossible.'); setResultMessage(payload.data?.message || 'Votre résultat a été enregistré.'); }
+    try { const response = await fetch('/api/results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activityId:activity.id,trainingId:journey?.trainingId,pathId:journey?.pathId,firstName,lastName,answers:decisions,score,maxScore,durationSeconds:Math.round((Date.now() - startedAt) / 1000),selfEvaluation:percentage >= 80 ? 'Maîtrisé' : percentage >= 50 ? 'En progression' : 'À renforcer'})}); const payload = await response.json() as {ok?:boolean;data?:{message?:string};error?:{message?:string}}; if (!response.ok || !payload.ok) throw new Error(payload.error?.message || 'Enregistrement impossible.'); setResultMessage(payload.data?.message || 'Votre résultat a été enregistré.'); }
     catch (reason) { setResultMessage(reason instanceof Error ? reason.message : 'Enregistrement impossible.'); }
     finally { setSubmitting(false); }
   };

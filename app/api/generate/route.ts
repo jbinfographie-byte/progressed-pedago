@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, activityContents, documentActivityLinks, documentPages, encryptedApiCredentials, scenarioChoices, scenarioProjects, scenarioScenes, sourceCitations, uploadedFiles } from '@/db/schema';
+import { activities, activityContents, courseFolderFiles, courseFolders, documentActivityLinks, documentPages, encryptedApiCredentials, learningPathItems, learningPaths, mainFolders, scenarioChoices, scenarioProjects, scenarioScenes, sourceCitations, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { ActivityDraft, ActivityType, isCreatableActivityType, validateActivityDraft } from '@/lib/activity-types';
 import { buildKnowledgeContext, rankKnowledgePages } from '@/lib/document-knowledge';
@@ -16,6 +16,9 @@ type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: s
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); const body = await readJson(request); const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8); const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
+    const mainFolderId = String(body.mainFolderId ?? '').trim();
+    const targetTheme = mainFolderId ? (await getDb().select().from(mainFolders).where(and(eq(mainFolders.id,mainFolderId),eq(mainFolders.trainerId,user.id))).limit(1))[0] : null;
+    if (mainFolderId && !targetTheme) throw new AppError(404,'Le dossier métier ou thématique choisi est introuvable.','MAIN_FOLDER_NOT_FOUND');
     if (sourceKind === 'documents' && !fileIds.length) throw new AppError(400, 'Ajoutez au moins un PDF ou un document à analyser.', 'DOCUMENT_REQUIRED');
     if (sourceKind === 'prompt' && rawPrompt.length < 15 && !fileIds.length) throw new AppError(400, 'Décrivez le cours souhaité, ajoutez un document ou fournissez un lien.', 'PROMPT_TOO_SHORT');
     const requested = Array.isArray(body.formats) ? body.formats.map(String) : [String(body.type ?? 'quiz')];
@@ -72,6 +75,7 @@ export async function POST(request: Request) {
     const allowedPages = new Set(knowledgeRows.map((row) => `${row.fileId}:${row.pageNumber}`));
     for (const draft of drafts) { const validation = validateActivityDraft(draft); if (!validation.valid) throw new AppError(502, `Contrôle qualité : ${validation.errors.join(' ')}`, 'OPENAI_QUALITY_REJECTED'); const explanationError = validateGeneratedExplanation(draft, body.explanationDepth); if (explanationError) throw new AppError(502, `Contrôle qualité : ${explanationError}`, 'OPENAI_EXPLANATION_TOO_SHORT'); if (draft.type === 'scenario' && fileIds.length) { const citationError = validateScenarioCitations(draft.content, allowedPages); if (citationError) throw new AppError(502, `Contrôle des sources : ${citationError}`, 'OPENAI_SOURCE_REJECTED'); } }
     const now = Math.floor(Date.now() / 1000); const created = drafts.map((draft) => ({ id: crypto.randomUUID(), draft }));
+    const generatedTrainingId = targetTheme ? crypto.randomUUID() : null; const generatedPathId = targetTheme ? crypto.randomUUID() : null;
     const statements: unknown[] = created.flatMap(({ id, draft }) => {
       const citations = collectScenarioCitations(draft.content);
       const structuredScenes: unknown[] = [];
@@ -88,11 +92,22 @@ export async function POST(request: Request) {
       return [getDb().insert(activities).values({ id, trainerId: user.id, type: draft.type, title: draft.title, theme: draft.theme, audience: draft.audience, level: draft.level, objectivesJson: JSON.stringify(draft.objectives), durationMinutes: draft.durationMinutes, instructions: draft.instructions, contentJson: JSON.stringify(draft.content), explanation: draft.explanation, correction: draft.correction, sourcesJson: JSON.stringify(draft.sources), status: 'draft', qualityScore: 90, createdAt: now, updatedAt: now }), getDb().insert(activityContents).values({ id: crypto.randomUUID(), activityId: id, version: 1, contentJson: JSON.stringify(draft), createdAt: now }), ...fileIds.map((fileId) => getDb().insert(documentActivityLinks).values({ id:crypto.randomUUID(),trainerId:user.id,fileId,activityId:id,pagesJson:JSON.stringify(knowledgeRows.filter((row) => row.fileId === fileId).map((row) => row.pageNumber)),createdAt:now })), ...citations.map((citation) => getDb().insert(sourceCitations).values({ id:crypto.randomUUID(),trainerId:user.id,activityId:id,fileId:citation.documentId,sceneId:citation.sceneId,choiceId:citation.choiceId,pageNumber:citation.pageNumber,passage:citation.passage,createdAt:now })),...structuredScenes];
     });
     if (fileIds.length) statements.push(...fileIds.map((fileId) => getDb().update(uploadedFiles).set({ contentCreatedCount: sql`${uploadedFiles.contentCreatedCount} + ${created.length}`, updatedAt: now }).where(and(eq(uploadedFiles.id,fileId),eq(uploadedFiles.trainerId,user.id)))));
+    if (targetTheme && generatedTrainingId && generatedPathId) {
+      const objectives=[...new Set(drafts.flatMap((draft)=>draft.objectives))].slice(0,24); const audience=drafts.find((draft)=>draft.audience)?.audience??targetTheme.audience; const level=drafts[0]?.level??'debutant'; const durationMinutes=Math.min(4800,Math.max(5,drafts.reduce((sum,draft)=>sum+draft.durationMinutes,0)));
+      const generatedName=`Formation · ${drafts[0]?.theme||targetTheme.name}`.slice(0,80);
+      statements.push(
+        getDb().insert(courseFolders).values({id:generatedTrainingId,trainerId:user.id,mainFolderId:targetTheme.id,name:generatedName,description:`Proposition de formation générée avec l’IA à partir de ${fileIds.length?`${fileIds.length} document(s) et des consignes du formateur`:'la consigne du formateur'}. Vérifiez les activités avant publication.`,color:targetTheme.color,audience,level,prerequisitesJson:'[]',objectivesJson:JSON.stringify(objectives),competenciesJson:targetTheme.competenciesJson,durationMinutes,coverImageUrl:targetTheme.coverImageUrl,status:'draft',createdAt:now,updatedAt:now}),
+        getDb().insert(learningPaths).values({id:generatedPathId,trainerId:user.id,trainingId:generatedTrainingId,name:`Parcours · ${generatedName}`,status:'draft',createdAt:now,updatedAt:now}),
+        ...created.map(({id},position)=>getDb().insert(learningPathItems).values({id:crypto.randomUUID(),pathId:generatedPathId,activityId:id,position,required:true,minScore:0,unlockAfterPrevious:true,createdAt:now,updatedAt:now})),
+        ...fileIds.map((fileId,position)=>getDb().insert(courseFolderFiles).values({id:crypto.randomUUID(),folderId:generatedTrainingId,fileId,position,createdAt:now})),
+        getDb().update(mainFolders).set({updatedAt:now}).where(and(eq(mainFolders.id,targetTheme.id),eq(mainFolders.trainerId,user.id))),
+      );
+    }
     if (projectId) { const scenarioActivity = created.find(({draft}) => draft.type === 'scenario'); if (scenarioActivity) statements.push(getDb().update(scenarioProjects).set({ status:'ready',activityId:scenarioActivity.id,briefJson:JSON.stringify(body.scenarioBrief ?? {}),settingsJson:JSON.stringify({scenarioCount:body.scenarioCount,scenarioDifficulty:body.scenarioDifficulty,scenarioProgressive:body.scenarioProgressive,scenarioSimpleFrench:body.scenarioSimpleFrench}),updatedAt:now }).where(and(eq(scenarioProjects.id,projectId),eq(scenarioProjects.trainerId,user.id)))); }
     await getDb().batch(statements as unknown as Parameters<ReturnType<typeof getDb>['batch']>[0]);
-    await audit(user.id, 'ai.bundle_generated', 'activity_bundle', null, { count: created.length, formats, fileCount: files.length, research, sourceKind, analysisMethod:source?.analysisMethod ?? null }, request);
+    await audit(user.id, 'ai.bundle_generated', 'activity_bundle', generatedTrainingId, { count: created.length, formats, fileCount: files.length, research, sourceKind, analysisMethod:source?.analysisMethod ?? null, mainFolderId:targetTheme?.id??null }, request);
     const sourceNotice = source?.analysisMethod === 'audio_transcription' ? ' La piste audio de la vidéo a été transcrite automatiquement.' : source?.analysisMethod === 'public_metadata_visuals' ? ' La vidéo étant restreinte, le cours a été construit à partir de son titre, de sa description publique et de ses aperçus visuels. Importez un fichier autorisé pour une analyse audio complète.' : '';
-    return jsonOk({ activities: created.map(({ id, draft }) => ({ id, title: draft.title, type: draft.type })), message: `${created.length} création(s) contrôlée(s) et enregistrée(s) dans votre bibliothèque.${sourceNotice}`, sourceTranscript:source?.transcript ?? null }, 201);
+    return jsonOk({ activities: created.map(({ id, draft }) => ({ id, title: draft.title, type: draft.type })), trainingId:generatedTrainingId, message: `${created.length} création(s) contrôlée(s) et enregistrée(s) dans votre bibliothèque.${generatedTrainingId?' Une formation en brouillon et son parcours ont été créés dans le grand thème sélectionné.':''}${sourceNotice}`, sourceTranscript:source?.transcript ?? null }, 201);
   } catch (error) { return jsonError(error); }
 }
 

@@ -89,13 +89,40 @@ const draft = {
 const created = await call('/api/activities', { cookie: trainer.cookie, method: 'POST', body: draft });
 assert.ok(created.data.id);
 
-const result = await call('/api/results', { method: 'POST', body: { activityId: created.data.id, firstName: 'Lina', lastName: 'Martin', score: 1, maxScore: 1, durationSeconds: 48, answers: [{ question: 0, answer: 0 }] } });
+const mainFolder = await call('/api/main-folders', { cookie: trainer.cookie, method: 'POST', body: { name: 'Propreté et hygiène', description: 'Grand thème métier', sector: 'Services', audience: 'Agents de propreté', keywords:['hygiène','sécurité'], competencies:['Organiser son intervention'], color:'mint' } });
+assert.ok(mainFolder.data.id);
+
+const trainingPayloads = [
+  { name:'Les bases du nettoyage professionnel',level:'debutant',durationMinutes:60 },
+  { name:'Bionettoyage d’une chambre en EHPAD',level:'intermediaire',durationMinutes:90 },
+  { name:'Préparation et organisation du chariot',level:'debutant',durationMinutes:45 },
+];
+const generatedTrainings = [];
+for (const item of trainingPayloads) generatedTrainings.push(await call('/api/folders',{cookie:trainer.cookie,method:'POST',body:{mainFolderId:mainFolder.data.id,...item,audience:'Agents de propreté',objectives:['Appliquer le protocole'],competencies:['Travailler en sécurité'],status:'draft',color:'blue'}}));
+assert.equal(generatedTrainings.length,3);
+
+const hierarchyBefore = await call('/api/folders',{cookie:trainer.cookie});
+assert.equal(hierarchyBefore.data.mainFolders.find((item)=>item.id===mainFolder.data.id)?.name,'Propreté et hygiène');
+assert.equal(hierarchyBefore.data.folders.filter((item)=>item.mainFolderId===mainFolder.data.id).length,3);
+const firstTrainingId = generatedTrainings[0].data.id; const firstPathId = generatedTrainings[0].data.pathId;
+await call(`/api/folders/${firstTrainingId}`,{cookie:trainer.cookie,method:'PATCH',body:{pathItems:[{activityId:created.data.id,required:true,minScore:70,unlockAfterPrevious:true}],status:'published'}});
+
+const hierarchyAfter = await call('/api/folders',{cookie:trainer.cookie});
+const persistedTraining = hierarchyAfter.data.folders.find((item)=>item.id===firstTrainingId);
+assert.equal(persistedTraining.path.items[0].activityId,created.data.id);
+assert.equal(persistedTraining.path.items[0].minScore,70);
+assert.equal(persistedTraining.status,'published');
+
+const adminHierarchy = await call('/api/folders',{cookie:admin.cookie});
+assert.equal(adminHierarchy.data.mainFolders.some((item)=>item.id===mainFolder.data.id),false,'un autre compte ne doit jamais voir les dossiers du formateur');
+
+const result = await call('/api/results', { method: 'POST', body: { activityId: created.data.id, trainingId:firstTrainingId, pathId:firstPathId, firstName: 'Lina', lastName: 'Martin', score: 1, maxScore: 1, durationSeconds: 48, answers: [{ question: 0, answer: 0 }] } });
 assert.ok(result.data.id);
 
 const library = await call('/api/activities', { cookie: trainer.cookie });
 assert.ok(library.data.activities.some((activity) => activity.id === created.data.id && activity.status === 'published'));
 const results = await call('/api/results', { cookie: trainer.cookie });
-assert.ok(results.data.results.some((row) => row.activityId === created.data.id && row.percentage === 100));
+assert.ok(results.data.results.some((row) => row.activityId === created.data.id && row.trainingId === firstTrainingId && row.mainFolderTitle === 'Propreté et hygiène' && row.percentage === 100));
 
 const resource = await call('/api/resources', { cookie: trainer.cookie, method: 'POST', body: { name: 'INRS', url: 'https://www.inrs.fr/', category: 'Autre' } });
 assert.ok(resource.data.id);
@@ -103,4 +130,4 @@ assert.ok(resource.data.id);
 const resetRequest = await call('/api/auth/password-reset/request', { method: 'POST', body: { email: trainerEmail } });
 assert.match(resetRequest.data.message,/30 minutes/);
 
-console.log(`Parcours complet validé : admin → ${trainerEmail} → profil moyen → autorisation → activité publiée → résultat → ressource.`);
+console.log(`Parcours complet validé : admin → ${trainerEmail} → profil moyen → autorisation → grand thème → 3 formations → parcours publié → résultat rattaché → cloisonnement → ressource.`);
