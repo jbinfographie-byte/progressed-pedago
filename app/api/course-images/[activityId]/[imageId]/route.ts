@@ -5,6 +5,7 @@ import { activities, courseFolders, learningPathItems, learningPaths, trainingSh
 import { audit, getCurrentUser, requirePermission } from '@/lib/auth';
 import { COURSE_IMAGE_PLACEMENTS, COURSE_IMAGE_STYLES, COURSE_IMAGE_WIDTHS, courseImagesFromContent, normalizeCourseImages, withCourseImages, type CourseImage } from '@/lib/course-images';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
+import { coursePagesFromContent } from '@/lib/course-pages';
 
 type Context={params:Promise<{activityId:string;imageId:string}>};
 
@@ -24,7 +25,7 @@ export async function GET(_request:Request,context:Context) {
 export async function PATCH(request:Request,context:Context) {
   try {
     assertSameOrigin(request); const user=await requirePermission('editActivities'); const {activityId,imageId}=await context.params; const activity=await ownedActivity(activityId,user.id); const body=await readJson(request);
-    const images=courseImagesFromContent(JSON.parse(activity.contentJson)); const current=images.find((item)=>item.id===imageId); if(!current) throw new AppError(404,'Cette image est introuvable.','COURSE_IMAGE_NOT_FOUND');
+    const activityContent=JSON.parse(activity.contentJson); const images=courseImagesFromContent(activityContent); const current=images.find((item)=>item.id===imageId); if(!current) throw new AppError(404,'Cette image est introuvable.','COURSE_IMAGE_NOT_FOUND');
     const now=Math.floor(Date.now()/1000); const next:CourseImage={...current,updatedAt:now};
     if(typeof body.placement==='string'&&COURSE_IMAGE_PLACEMENTS.includes(body.placement as CourseImage['placement'])) next.placement=body.placement as CourseImage['placement'];
     if(typeof body.style==='string'&&COURSE_IMAGE_STYLES.includes(body.style as CourseImage['style'])) next.style=body.style as CourseImage['style'];
@@ -34,12 +35,13 @@ export async function PATCH(request:Request,context:Context) {
     if(typeof body.prompt==='string') next.prompt=body.prompt.trim().slice(0,3_000);
     if(typeof body.altText==='string') next.altText=body.altText.trim().slice(0,300)||'Illustration pédagogique';
     if(typeof body.caption==='string') next.caption=body.caption.trim().slice(0,500);
+    if(typeof body.pageId==='string') { const pageId=body.pageId.trim().slice(0,80); const pages=coursePagesFromContent(activityContent); next.pageId=pageId&&pages.some((page)=>page.id===pageId)?pageId:undefined; }
     if(body.focalX!==undefined) next.focalX=clamp(body.focalX,0,100,50);
     if(body.focalY!==undefined) next.focalY=clamp(body.focalY,0,100,50);
     if(body.position!==undefined) next.position=Math.round(clamp(body.position,0,Math.max(0,images.length-1),current.position));
     const reordered=images.filter((item)=>item.id!==imageId); reordered.splice(Math.min(next.position,reordered.length),0,next);
     const normalized=normalizeCourseImages(reordered.map((item,index)=>({...item,position:index})));
-    await saveImages(activity.id,user.id,JSON.parse(activity.contentJson),normalized);
+    await saveImages(activity.id,user.id,activityContent,normalized);
     if(next.placement==='cover'&&next.status==='validated') await updateTrainingCovers(activity.id,user.id,next.url,now);
     await audit(user.id,'course_image.updated','activity',activity.id,{imageId,placement:next.placement,status:next.status},request);
     return jsonOk({image:normalized.find((item)=>item.id===imageId),images:normalized,message:'Les réglages de l’image sont enregistrés.'});

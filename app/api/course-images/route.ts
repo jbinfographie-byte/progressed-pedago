@@ -3,7 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { activities, courseFolders, encryptedApiCredentials, learningPathItems, learningPaths, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
-import { buildCourseImagePrompt, courseImagesFromContent, imageUrl, resolveAutomaticPlacement, withCourseImages, type CourseImage, type CourseImagePlacement, type CourseImageSource, type CourseImageStyle } from '@/lib/course-images';
+import { buildCourseImagePrompt, courseImagesFromContent, imageUrl, resolveAutomaticPlacement, withCourseImages, COURSE_IMAGE_PLACEMENTS, type CourseImage, type CourseImagePlacement, type CourseImageSource, type CourseImageStyle } from '@/lib/course-images';
+import { coursePagesFromContent, type CoursePage } from '@/lib/course-pages';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { decryptSecret } from '@/lib/security';
 import type { ActivityType } from '@/lib/activity-types';
@@ -12,7 +13,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 type ImageRequest = {
   activityId:string; mode:'upload'|'ai'|'document-use'|'document-crop'|'document-inspired'; placement:string; style:string; prompt:string;
-  altText:string; caption:string; sourceFileId:string; sourcePage:number; rightsConfirmed:boolean; validated:boolean; replaceImageId:string;
+  altText:string; caption:string; sourceFileId:string; sourcePage:number; pageId:string; rightsConfirmed:boolean; validated:boolean; replaceImageId:string;
 };
 
 export async function GET(request:Request) {
@@ -27,7 +28,7 @@ export async function POST(request:Request) {
   try {
     assertSameOrigin(request); const user=await requirePermission('editActivities');
     const {values,file}=await parseImageRequest(request); const activity=await ownedActivity(values.activityId,user.id);
-    const current=courseImagesFromContent(JSON.parse(activity.contentJson)); const replace=current.find((item)=>item.id===values.replaceImageId);
+    const activityContent=JSON.parse(activity.contentJson); const current=courseImagesFromContent(activityContent); const replace=current.find((item)=>item.id===values.replaceImageId);
     const placement=values.placement==='automatic' ? resolveAutomaticPlacement(activity.type as ActivityType,replace?.position??current.length) : normalizePlacement(values.placement);
     const style=normalizeStyle(values.style); let bytes:Uint8Array; let mimeType:'image/png'|'image/jpeg'='image/png'; let source:CourseImageSource='ai'; let sourceFileId:string|undefined; let sourcePage:number|undefined;
     let finalPrompt=buildCourseImagePrompt({title:activity.title,theme:activity.theme,audience:activity.audience??'',objectives:parseList(activity.objectivesJson),placement,style,prompt:values.prompt});
@@ -57,7 +58,8 @@ export async function POST(request:Request) {
     const now=Math.floor(Date.now()/1000); const id=replace?.id??crypto.randomUUID(); const extension=mimeType==='image/jpeg'?'jpg':'png'; const objectKey=`trainers/${user.id}/course-images/${activity.id}/${id}.${extension}`;
     await env.FILES.put(objectKey,bytes,{httpMetadata:{contentType:mimeType},customMetadata:{owner:user.id,activityId:activity.id,source}});
     if(replace&&replace.objectKey!==objectKey) await env.FILES.delete(replace.objectKey);
-    const image:CourseImage={id,url:imageUrl(activity.id,id),objectKey,mimeType,source,placement,style,prompt:finalPrompt,altText:cleanText(values.altText,300)||`Illustration pédagogique : ${activity.title}`,caption:cleanText(values.caption,500),status:values.validated?'validated':'draft',width:replace?.width??'large',fit:values.mode==='document-crop'?'cover':replace?.fit??'contain',focalX:replace?.focalX??50,focalY:replace?.focalY??50,position:replace?.position??current.length,sourceFileId,sourcePage,rightsConfirmed:values.rightsConfirmed||undefined,createdAt:replace?.createdAt??now,updatedAt:now};
+    const pageId=resolveCourseImagePage(coursePagesFromContent(activityContent),placement,values.pageId,replace?.pageId,current.length);
+    const image:CourseImage={id,url:imageUrl(activity.id,id),objectKey,mimeType,source,placement,style,prompt:finalPrompt,altText:cleanText(values.altText,300)||`Illustration pédagogique : ${activity.title}`,caption:cleanText(values.caption,500),status:values.validated?'validated':'draft',width:replace?.width??'large',fit:values.mode==='document-crop'?'cover':replace?.fit??'contain',focalX:replace?.focalX??50,focalY:replace?.focalY??50,position:replace?.position??current.length,sourceFileId,sourcePage,pageId,rightsConfirmed:values.rightsConfirmed||undefined,createdAt:replace?.createdAt??now,updatedAt:now};
     const images=replace?current.map((item)=>item.id===replace.id?image:item):[...current,image];
     await saveImages(activity.id,user.id,JSON.parse(activity.contentJson),images);
     if(image.placement==='cover'&&image.status==='validated') await updateTrainingCovers(activity.id,user.id,image.url,now);
@@ -73,7 +75,7 @@ async function parseImageRequest(request:Request):Promise<{values:ImageRequest;f
   const mode=String(raw.mode??'ai');
   if(!['upload','ai','document-use','document-crop','document-inspired'].includes(mode)) throw new AppError(400,'Cette source d’image n’est pas reconnue.','INVALID_IMAGE_MODE');
   const activityId=cleanText(raw.activityId,80); if(!activityId) throw new AppError(400,'L’activité à illustrer est obligatoire.','ACTIVITY_REQUIRED');
-  return {file,values:{activityId,mode:mode as ImageRequest['mode'],placement:cleanText(raw.placement,40)||'automatic',style:cleanText(raw.style,40)||'automatic',prompt:cleanText(raw.prompt,2_000),altText:cleanText(raw.altText,300),caption:cleanText(raw.caption,500),sourceFileId:cleanText(raw.sourceFileId,80),sourcePage:Math.max(0,Math.round(Number(raw.sourcePage)||0)),rightsConfirmed:raw.rightsConfirmed===true||raw.rightsConfirmed==='true'||raw.rightsConfirmed==='on',validated:raw.validated===true||raw.validated==='true'||raw.validated==='on',replaceImageId:cleanText(raw.replaceImageId,80)}};
+  return {file,values:{activityId,mode:mode as ImageRequest['mode'],placement:cleanText(raw.placement,40)||'automatic',style:cleanText(raw.style,40)||'automatic',prompt:cleanText(raw.prompt,2_000),altText:cleanText(raw.altText,300),caption:cleanText(raw.caption,500),sourceFileId:cleanText(raw.sourceFileId,80),sourcePage:Math.max(0,Math.round(Number(raw.sourcePage)||0)),pageId:cleanText(raw.pageId,80),rightsConfirmed:raw.rightsConfirmed===true||raw.rightsConfirmed==='true'||raw.rightsConfirmed==='on',validated:raw.validated===true||raw.validated==='true'||raw.validated==='on',replaceImageId:cleanText(raw.replaceImageId,80)}};
 }
 
 async function ownedActivity(id:string,userId:string) { const row=(await getDb().select().from(activities).where(and(eq(activities.id,id),eq(activities.trainerId,userId))).limit(1))[0]; if(!row) throw new AppError(404,'Cette activité est introuvable.','ACTIVITY_NOT_FOUND'); return row; }
@@ -115,6 +117,14 @@ function imageApiError(status:number,code?:string) { if(status===401)return new 
 function decodeBase64(value:string):Uint8Array { const binary=atob(value); const bytes=new Uint8Array(binary.length); for(let index=0;index<binary.length;index++)bytes[index]=binary.charCodeAt(index); return bytes; }
 function encodeBase64(bytes:Uint8Array):string { let binary=''; for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192)); return btoa(binary); }
 function parseList(value:string):string[] { try { const parsed=JSON.parse(value) as unknown; return Array.isArray(parsed)?parsed.map(String):[]; } catch { return []; } }
-function normalizePlacement(value:string):CourseImagePlacement { return ['cover','introduction','explanation','example','procedure','scenario','synthesis'].includes(value)?value as CourseImagePlacement:'explanation'; }
+function normalizePlacement(value:string):CourseImagePlacement { return COURSE_IMAGE_PLACEMENTS.includes(value as CourseImagePlacement)?value as CourseImagePlacement:'explanation'; }
+function resolveCourseImagePage(pages:CoursePage[],placement:CourseImagePlacement,requested:string,current:string|undefined,index:number):string|undefined {
+  if(!pages.length)return undefined; if(requested&&pages.some((page)=>page.id===requested))return requested; if(current&&pages.some((page)=>page.id===current))return current;
+  if(placement==='cover')return pages.find((page)=>page.kind==='cover')?.id;
+  if(placement==='introduction')return pages.find((page)=>page.kind==='introduction')?.id;
+  if(placement==='synthesis')return pages.find((page)=>page.kind==='synthesis')?.id;
+  if(placement==='exercise')return pages.find((page)=>page.kind==='exercises')?.id??pages.at(-2)?.id;
+  const chapters=pages.filter((page)=>page.kind==='chapter'); return chapters[index%Math.max(1,chapters.length)]?.id??pages[Math.min(index,pages.length-1)]?.id;
+}
 function normalizeStyle(value:string):CourseImageStyle { return ['automatic','realistic','illustration','pedagogical'].includes(value)?value as CourseImageStyle:'automatic'; }
 function cleanText(value:unknown,max:number):string { return String(value??'').trim().slice(0,max); }

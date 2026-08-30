@@ -1,6 +1,6 @@
 import type { ActivityType } from '@/lib/activity-types';
 
-export const COURSE_IMAGE_PLACEMENTS = ['cover','introduction','explanation','example','procedure','scenario','synthesis'] as const;
+export const COURSE_IMAGE_PLACEMENTS = ['cover','introduction','explanation','example','procedure','scenario','synthesis','exercise'] as const;
 export const COURSE_IMAGE_STYLES = ['automatic','realistic','illustration','pedagogical'] as const;
 export const COURSE_IMAGE_WIDTHS = ['small','medium','large','full'] as const;
 export const COURSE_IMAGE_SOURCES = ['upload','ai','document'] as const;
@@ -29,13 +29,14 @@ export type CourseImage = {
   position: number;
   sourceFileId?: string;
   sourcePage?: number;
+  pageId?: string;
   rightsConfirmed?: boolean;
   createdAt: number;
   updatedAt: number;
 };
 
 export const COURSE_IMAGE_PLACEMENT_LABELS: Record<CourseImagePlacement,string> = {
-  cover:'Couverture', introduction:'Introduction', explanation:'Explication importante', example:'Exemple', procedure:'Procédure', scenario:'Mise en situation', synthesis:'Synthèse',
+  cover:'Couverture', introduction:'Introduction', explanation:'Explication importante', example:'Exemple', procedure:'Procédure', scenario:'Mise en situation', synthesis:'Synthèse', exercise:'Exercice ou quiz',
 };
 export const COURSE_IMAGE_STYLE_LABELS: Record<CourseImageStyle,string> = {
   automatic:'Automatique', realistic:'Réaliste', illustration:'Illustration', pedagogical:'Dessin pédagogique',
@@ -69,6 +70,7 @@ export function normalizeCourseImages(value: unknown): CourseImage[] {
       focalX:clamp(image.focalX,0,100,50), focalY:clamp(image.focalY,0,100,50), position:Math.round(clamp(image.position,0,1_000,index)),
       sourceFileId:cleanText(image.sourceFileId,80) || undefined,
       sourcePage:Number.isInteger(sourcePage) && sourcePage > 0 ? Math.min(20_000,sourcePage) : undefined,
+      pageId:cleanText(image.pageId,80) || undefined,
       rightsConfirmed:image.rightsConfirmed === true, createdAt, updatedAt:Math.round(clamp(image.updatedAt,0,9_999_999_999,createdAt)),
     } satisfies CourseImage];
   }).sort((left,right) => left.position - right.position);

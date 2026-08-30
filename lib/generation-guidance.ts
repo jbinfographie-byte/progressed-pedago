@@ -8,6 +8,8 @@ export function normalizeExplanationDepth(value: unknown): ExplanationDepth {
 
 export function buildGenerationPrompt(prompt: string, formats: ActivityType[], body: Record<string, unknown>): string {
   const depth = normalizeExplanationDepth(body.explanationDepth);
+  const pageCount = Math.min(24,Math.max(3,Number(body.coursePageCount) || 7));
+  const multiPageCourse = body.multiPageCourse === true;
   const lessonInstruction = depth === 'none'
     ? 'Le champ explanation peut rester vide. Fournis néanmoins une correction brève et exacte pour chaque réponse.'
     : depth === 'essential'
@@ -25,6 +27,17 @@ Exigences obligatoires pour la mise en situation :
 - nextSceneId pointe vers l’id de la scène suivante ; utilise null à la dernière scène. Ne crée pas de boucle.
 - debrief contient title, summary, bestPractices, pointsToReview et trainerQuestions. Les explications doivent être concrètes, professionnelles, bienveillantes et exploitables en correction collective.${body.scenarioSimpleFrench ? '\n- Emploie des phrases courtes et un français simple sans supprimer le vocabulaire professionnel utile.' : ''}
 ` : '';
+  const multiPageInstruction = multiPageCourse ? `
+Exigences obligatoires pour le cours PDF multipage :
+- Analyse l'intégralité des pages exploitables de la BASE DOCUMENTAIRE PRIVÉE avant de rédiger. Ne produis jamais un simple résumé d'une page.
+- Pour CHAQUE activité, ajoute à la racine de l'objet exactement ${pageCount} éléments dans coursePages. L'ordre est pédagogique et l'id de chaque page est unique.
+- Page 1 : kind "cover" avec titre et promesse pédagogique. Page 2 : kind "introduction" avec contexte, objectifs et prérequis. Dernière page : kind "synthesis" avec bilan, points à retenir et mise en pratique. Les pages intermédiaires sont des "chapter" structurés et, si pertinent, une page "exercises".
+- Chaque page contient title, kind, lead, sections[{heading,body}], definitions[{term,definition}], examples[{title,description}], keyPoints[], practice{title,instructions} et sourceRefs[{documentId,pageNumber}]. Utilise des tableaux décrits clairement dans les sections lorsque cela facilite la compréhension.
+- Chaque chapitre apporte des explications développées, des définitions utiles, un exemple professionnel concret, des points clés et une courte application. Le niveau de détail demandé est « ${String(body.courseLength ?? 'intermediate')} ».
+- Répartis la matière sur les ${pageCount} pages sans répétition artificielle. Les exercices et le quiz doivent découler des chapitres et non être ajoutés hors contexte.
+- Chaque marqueur [document:IDENTIFIANT|page:NUMERO] de la BASE DOCUMENTAIRE PRIVÉE doit apparaître au moins une fois dans les sourceRefs du cours. N'invente aucun identifiant ni numéro de page. Plusieurs références peuvent être regroupées sur une même page de cours.
+- Le champ explanation reste un aperçu introductif ; coursePages constitue le cours complet destiné à l'affichage, à la bibliothèque et au PDF A4.
+` : '';
   return `Demande du formateur : ${prompt}
 Public : ${String(body.audience ?? 'adultes en formation professionnelle')}
 Niveau : ${String(body.level ?? 'débutant')}
@@ -36,6 +49,7 @@ ${lessonInstruction}
 - Si des fichiers sont joints, reprends fidèlement leurs notions, procédures, exemples et vocabulaire dans le mini-cours et les corrections. Ne mentionne pas une information absente ou incertaine.
 - Le champ correction doit fournir une synthèse exploitable par le formateur : réponses attendues, critères de réussite, points de vigilance et pistes de reformulation.
 - Les objectifs, le mini-cours, l’exercice et la correction doivent traiter exactement le même contenu.
+${multiPageInstruction}
 ${scenarioInstruction}
 
 Exigences pour les mécaniques :

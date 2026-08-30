@@ -21,7 +21,7 @@ export function ManualActivityDialog({ type,initial,onClose,onCreated }: { type:
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError(''); const form = new FormData(event.currentTarget);
     try {
-      const content = isQuiz ? quizContent(questions) : isScenario ? scenario : JSON.parse(contentJson) as Record<string,unknown>;
+      const content = isQuiz ? {...(initial?.content??{}),...quizContent(questions)} : isScenario ? {...(initial?.content??{}),...scenario} : JSON.parse(contentJson) as Record<string,unknown>;
       const title = String(form.get('title') ?? '').trim();
       const objectives = String(form.get('objectives') ?? '').split('\n').map((item) => item.trim()).filter(Boolean);
       const automatic = buildManualPedagogy(type,title,objectives,content);

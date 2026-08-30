@@ -44,3 +44,10 @@ test('la génération de mise en situation exige des scènes progressives compl�
   assert.match(prompt,/jamais l’ancien format steps/);
   assert.match(prompt,/français simple/);
 });
+
+test('le cours PDF exige un nombre exact de pages et couvre toutes les pages sources',()=>{
+  const prompt=buildGenerationPrompt('Transformer tout le PDF en cours',['quiz'],{multiPageCourse:true,coursePageCount:12,courseLength:'complete'});
+  assert.match(prompt,/exactement 12 éléments dans coursePages/);
+  assert.match(prompt,/Chaque marqueur \[document:IDENTIFIANT\|page:NUMERO\]/);
+  assert.match(prompt,/Ne produis jamais un simple résumé/);
+});

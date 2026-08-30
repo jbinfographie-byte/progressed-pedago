@@ -5,7 +5,9 @@ import { type ReactNode, useState } from 'react';
 import { ACTIVITY_TYPES, normalizeAnswer, type ActivityType } from '@/lib/activity-types';
 import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } from '@/components/activity-print-sheet';
 import { CourseImageManager } from '@/components/course-image-manager';
+import { CourseReader } from '@/components/course-reader';
 import { COURSE_IMAGE_PLACEMENT_LABELS, courseImagesFromContent, type CourseImage, type CourseImagePlacement } from '@/lib/course-images';
+import { coursePagesFromContent } from '@/lib/course-pages';
 import { normalizeScenarioContent, type ScenarioChoice, type ScenarioCitation } from '@/lib/scenario';
 
 type PlayerActivity = PrintableActivity & { id?: string };
@@ -22,6 +24,7 @@ export function ActivityPlayer({ activity, onClose, journey, canManageImages = f
   const [lessonOpen,setLessonOpen] = useState(activity.type !== 'scenario');
   const [imageManagerOpen,setImageManagerOpen] = useState(false);
   const [courseImages,setCourseImages] = useState(() => courseImagesFromContent(activity.content));
+  const coursePages=coursePagesFromContent(activity.content);
   const sourceMedia = readSourceMedia(activity.content.sourceMedia);
   const gradedActivity=['quiz','tv-quiz','true-false','scenario'].includes(activity.type);
   const illustratedActivity={...activity,content:{...activity.content,courseImages}};
@@ -31,21 +34,23 @@ export function ActivityPlayer({ activity, onClose, journey, canManageImages = f
         <div className="player-learning-layout"><div className="screen-player-content">
           <header className="player-header">
             <div><p className="overline">{journey ? `${journey.name} · étape ${journey.index + 1} sur ${journey.total}` : 'Activité en direct'}</p><h2 id="player-title">{activity.title}</h2><p>{activity.instructions}</p></div>
-            <div>{activity.explanation && <button className="button light" type="button" aria-expanded={lessonOpen} onClick={() => setLessonOpen((value) => !value)}>{lessonOpen ? 'Masquer le cours' : 'Voir le cours'}</button>}{canManageImages&&activity.id&&<button className="button light" type="button" onClick={()=>setImageManagerOpen(true)}>▧ Gérer les images</button>}<button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button>{journey?.onPrevious && <button className="button light" type="button" onClick={journey.onPrevious}>← Étape précédente</button>}{journey?.onComplete&&!gradedActivity && <button className="button dark" type="button" disabled={journey.completed} onClick={()=>void journey.onComplete?.()}>{journey.completed?'Étape terminée ✓':'Terminer cette étape'}</button>}{journey?.onNext && <button className="button dark" type="button" onClick={journey.onNext}>Étape suivante →</button>}<button className={journey?.onNext ? 'button light' : 'button dark'} type="button" onClick={onClose}>{journey ? 'Quitter le parcours' : 'Fermer'}</button></div>
+            <div>{(activity.explanation||coursePages.length>0) && <button className="button light" type="button" aria-expanded={lessonOpen} onClick={() => setLessonOpen((value) => !value)}>{lessonOpen ? 'Masquer le cours' : 'Voir le cours'}</button>}{canManageImages&&activity.id&&<button className="button light" type="button" onClick={()=>setImageManagerOpen(true)}>▧ Gérer les images</button>}<button className="button light" type="button" onClick={() => window.print()}>Imprimer le support A4</button><button className="button light" type="button" onClick={() => setFullscreen((value) => !value)}>{fullscreen ? 'Réduire' : 'Plein écran'}</button>{journey?.onPrevious && <button className="button light" type="button" onClick={journey.onPrevious}>← Étape précédente</button>}{journey?.onComplete&&!gradedActivity && <button className="button dark" type="button" disabled={journey.completed} onClick={()=>void journey.onComplete?.()}>{journey.completed?'Étape terminée ✓':'Terminer cette étape'}</button>}{journey?.onNext && <button className="button dark" type="button" onClick={journey.onNext}>Étape suivante →</button>}<button className={journey?.onNext ? 'button light' : 'button dark'} type="button" onClick={onClose}>{journey ? 'Quitter le parcours' : 'Fermer'}</button></div>
           </header>
-          <CourseImageGallery images={courseImages} placement="cover" />
+          {!coursePages.length&&<CourseImageGallery images={courseImages} placement="cover" />}
           <div className="activity-context"><span>{ACTIVITY_TYPES.find(([type]) => type === activity.type)?.[1] ?? activity.type}</span><p><strong>Objectif de l’activité</strong>{activity.objectives?.[0] ?? 'Comprendre, pratiquer puis expliquer la réponse.'}</p><p><strong>Durée indicative</strong>{activity.durationMinutes ? `${activity.durationMinutes} minutes` : 'À adapter au groupe'}</p></div>
-          <CourseImageGallery images={courseImages} placement="introduction" />
+          {!coursePages.length&&<CourseImageGallery images={courseImages} placement="introduction" />}
           {journey?.resourcePanel}
           {sourceMedia && <section className="source-video"><div><span>Vidéo source analysée</span><strong>{sourceMedia.title}</strong><a href={sourceMedia.url} target="_blank" rel="noreferrer">Ouvrir la source ↗</a></div>{sourceMedia.kind === 'direct' ? <video src={sourceMedia.url} controls preload="metadata" /> : <iframe src={sourceMedia.embedUrl} title={sourceMedia.title} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />}</section>}
-          {activity.explanation && <details className="lesson-drawer lesson-panel" open={lessonOpen} onToggle={(event) => setLessonOpen(event.currentTarget.open)}><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><CourseImageGallery images={courseImages} placement="explanation" /><StructuredExplanation text={activity.explanation} /><CourseImageGallery images={courseImages} placement="example" /><CourseImageGallery images={courseImages} placement="procedure" /></details>}
-          <CourseImageGallery images={courseImages} placement="scenario" />
+          {!!coursePages.length&&lessonOpen&&<CourseReader pages={coursePages} images={courseImages}/>}
+          {!coursePages.length&&activity.explanation && <details className="lesson-drawer lesson-panel" open={lessonOpen} onToggle={(event) => setLessonOpen(event.currentTarget.open)}><summary><span>Mini-cours</span><strong>Comprendre avant de commencer</strong><small>Afficher ou masquer les explications détaillées</small></summary><CourseImageGallery images={courseImages} placement="explanation" /><StructuredExplanation text={activity.explanation} /><CourseImageGallery images={courseImages} placement="example" /><CourseImageGallery images={courseImages} placement="procedure" /></details>}
+          {!coursePages.length&&<CourseImageGallery images={courseImages} placement="scenario" />}
+          <CourseImageGallery images={courseImages.filter((image)=>!image.pageId)} placement="exercise" />
           <main className="mechanic-stage"><Mechanic type={activity.type} content={activity.content} activity={activity} journey={journey} /></main>
-          <CourseImageGallery images={courseImages} placement="synthesis" />
+          {!coursePages.length&&<CourseImageGallery images={courseImages} placement="synthesis" />}
         </div>{journey?.timeline}</div>
         <ActivityPrintSheet activity={illustratedActivity} />
       </section>
-      {imageManagerOpen&&activity.id&&<CourseImageManager activityId={activity.id} initialImages={courseImages} onChange={setCourseImages} onClose={()=>setImageManagerOpen(false)}/>}
+      {imageManagerOpen&&activity.id&&<CourseImageManager activityId={activity.id} initialImages={courseImages} coursePages={coursePages} onChange={setCourseImages} onClose={()=>setImageManagerOpen(false)}/>}
     </div>
   );
 }
