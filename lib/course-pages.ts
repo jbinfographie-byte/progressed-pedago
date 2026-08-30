@@ -28,7 +28,7 @@ export function resolveCoursePageCount(lengthValue:unknown,customValue:unknown):
   const length=normalizeCourseLength(lengthValue);
   if(length==='short')return 4;
   if(length==='complete')return 12;
-  if(length==='custom')return Math.min(24,Math.max(3,Math.round(Number(customValue)||8)));
+  if(length==='custom')return Math.min(24,Math.max(4,Math.round(Number(customValue)||8)));
   return 7;
 }
 
@@ -68,6 +68,75 @@ export function coursePagesFromContent(content:unknown):CoursePage[] {
 
 export function coursePageTextLength(page:CoursePage):number {
   return [page.title,page.lead,...page.sections.flatMap((section)=>[section.heading,section.body]),...page.definitions.flatMap((definition)=>[definition.term,definition.definition]),...page.examples.flatMap((example)=>[example.title,example.description]),...page.keyPoints,page.practice.title,page.practice.instructions].join(' ').length;
+}
+
+function sourceKey(source:CoursePageSource):string {
+  return `${source.documentId}:${source.pageNumber}`;
+}
+
+function sourceFromKey(key:string):CoursePageSource|null {
+  const separator=key.lastIndexOf(':');
+  if(separator<=0)return null;
+  const documentId=key.slice(0,separator); const pageNumber=Number(key.slice(separator+1));
+  return documentId&&Number.isInteger(pageNumber)&&pageNumber>0?{documentId,pageNumber}:null;
+}
+
+/**
+ * Stabilise la structure renvoyée par l'IA avant le contrôle qualité.
+ * Le schéma garantit le nombre de pages et leur contenu, mais un modèle peut
+ * encore attribuer le bon contenu d'introduction à la mauvaise position ou
+ * utiliser un mauvais libellé de page. Ce défaut de classement ne doit pas
+ * annuler un cours complet déjà généré.
+ */
+export function stabilizeCoursePages(value:unknown,target:number,allowedPages:Set<string>):CoursePage[] {
+  const pages=normalizeCoursePages(value);
+  if(pages.length!==target||pages.length<3)return pages;
+
+  const allIndexes=pages.map((_,index)=>index);
+  const coverIndex=pages.findIndex((page)=>page.kind==='cover');
+  const resolvedCoverIndex=coverIndex>=0?coverIndex:0;
+  const introductionIndex=pages.findIndex((page,index)=>page.kind==='introduction'&&index!==resolvedCoverIndex);
+  const resolvedIntroductionIndex=introductionIndex>=0?introductionIndex:(resolvedCoverIndex===1?0:1);
+  let synthesisIndex=-1;
+  for(let index=pages.length-1;index>=0;index--) {
+    if(pages[index]?.kind==='synthesis'&&index!==resolvedCoverIndex&&index!==resolvedIntroductionIndex){synthesisIndex=index;break;}
+  }
+  if(synthesisIndex<0)synthesisIndex=allIndexes.findLast((index)=>index!==resolvedCoverIndex&&index!==resolvedIntroductionIndex)??pages.length-1;
+
+  const middleIndexes=allIndexes
+    .filter((index)=>index!==resolvedCoverIndex&&index!==resolvedIntroductionIndex&&index!==synthesisIndex)
+    .sort((left,right)=>Number(pages[left]!.kind==='exercises')-Number(pages[right]!.kind==='exercises'));
+  const orderedIndexes=[resolvedCoverIndex,resolvedIntroductionIndex,...middleIndexes,synthesisIndex];
+  const ordered=orderedIndexes.map((index)=>({...pages[index]!,sourceRefs:[...pages[index]!.sourceRefs]}));
+
+  ordered[0]={...ordered[0]!,kind:'cover'};
+  ordered[1]={...ordered[1]!,kind:'introduction'};
+  ordered[ordered.length-1]={...ordered[ordered.length-1]!,kind:'synthesis'};
+  for(let index=2;index<ordered.length-1;index++) {
+    if(ordered[index]!.kind==='cover'||ordered[index]!.kind==='introduction'||ordered[index]!.kind==='synthesis')ordered[index]={...ordered[index]!,kind:'chapter'};
+  }
+
+  const chapterMinimum=Math.max(1,target-4);
+  let chapterCount=ordered.filter((page)=>page.kind==='chapter').length;
+  for(let index=2;index<ordered.length-1&&chapterCount<chapterMinimum;index++) {
+    if(ordered[index]!.kind==='exercises'){ordered[index]={...ordered[index]!,kind:'chapter'};chapterCount++;}
+  }
+
+  if(allowedPages.size) {
+    for(let index=0;index<ordered.length;index++) {
+      ordered[index]={...ordered[index]!,sourceRefs:ordered[index]!.sourceRefs.filter((source)=>allowedPages.has(sourceKey(source)))};
+    }
+    const cited=new Set(ordered.flatMap((page)=>page.sourceRefs.map(sourceKey)));
+    const missing=[...allowedPages].filter((key)=>!cited.has(key)).map(sourceFromKey).filter((source):source is CoursePageSource=>source!==null);
+    const recipientIndexes=ordered.map((page,index)=>({page,index})).filter(({page,index})=>index>0&&index<ordered.length-1&&page.kind==='chapter').map(({index})=>index);
+    if(!recipientIndexes.length)recipientIndexes.push(1);
+    missing.forEach((source,index)=>{
+      const recipient=recipientIndexes[index%recipientIndexes.length]!;
+      ordered[recipient]={...ordered[recipient]!,sourceRefs:[...ordered[recipient]!.sourceRefs,source]};
+    });
+  }
+
+  return ordered;
 }
 
 export function validateCoursePages(pages:CoursePage[],target:number,lengthValue:unknown,allowedPages:Set<string>):string|null {

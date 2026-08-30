@@ -8,7 +8,7 @@ export function normalizeExplanationDepth(value: unknown): ExplanationDepth {
 
 export function buildGenerationPrompt(prompt: string, formats: ActivityType[], body: Record<string, unknown>): string {
   const depth = normalizeExplanationDepth(body.explanationDepth);
-  const pageCount = Math.min(24,Math.max(3,Number(body.coursePageCount) || 7));
+  const pageCount = Math.min(24,Math.max(4,Number(body.coursePageCount) || 7));
   const multiPageCourse = body.multiPageCourse === true;
   const lessonInstruction = depth === 'none'
     ? 'Le champ explanation peut rester vide. Fournis néanmoins une correction brève et exacte pour chaque réponse.'
@@ -30,7 +30,7 @@ Exigences obligatoires pour la mise en situation :
   const multiPageInstruction = multiPageCourse ? `
 Exigences obligatoires pour le cours PDF multipage :
 - Analyse l'intégralité des pages exploitables de la BASE DOCUMENTAIRE PRIVÉE avant de rédiger. Ne produis jamais un simple résumé d'une page.
-- Pour CHAQUE activité, ajoute à la racine de l'objet exactement ${pageCount} éléments dans coursePages. L'ordre est pédagogique et l'id de chaque page est unique.
+- Ajoute une seule propriété coursePages à la racine de la réponse, à côté de activities, contenant exactement ${pageCount} pages. Ce cours commun accompagne toutes les activités demandées sans être répété. L'ordre est pédagogique et l'id de chaque page est unique.
 - Page 1 : kind "cover" avec titre et promesse pédagogique. Page 2 : kind "introduction" avec contexte, objectifs et prérequis. Dernière page : kind "synthesis" avec bilan, points à retenir et mise en pratique. Les pages intermédiaires sont des "chapter" structurés et, si pertinent, une page "exercises".
 - Chaque page contient title, kind, lead, sections[{heading,body}], definitions[{term,definition}], examples[{title,description}], keyPoints[], practice{title,instructions} et sourceRefs[{documentId,pageNumber}]. Utilise des tableaux décrits clairement dans les sections lorsque cela facilite la compréhension.
 - Chaque chapitre apporte des explications développées, des définitions utiles, un exemple professionnel concret, des points clés et une courte application. Le niveau de détail demandé est « ${String(body.courseLength ?? 'intermediate')} ».
