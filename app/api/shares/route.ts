@@ -4,7 +4,7 @@ import { getDb } from '@/db';
 import { courseFolders, learnerParticipants, learningPaths, trainingShares } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
-import { normalizeShareSettings, sharePublicUrl } from '@/lib/training-sharing';
+import { assertLiveActivityInPath, normalizeShareSettings, sharePublicUrl } from '@/lib/training-sharing';
 import { encryptSecret, randomToken, sha256 } from '@/lib/security';
 
 export async function GET(request: Request) {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     if(training.status!=='published') throw new AppError(409,'Publiez d’abord la formation avant de créer un accès apprenant.','TRAINING_NOT_PUBLISHED');
     const path=(await getDb().select().from(learningPaths).where(and(eq(learningPaths.trainingId,trainingId),eq(learningPaths.trainerId,user.id))).limit(1))[0];
     if(!path||path.status!=='published') throw new AppError(409,'Le parcours doit être publié avant son partage.','PATH_NOT_PUBLISHED');
-    const settings=normalizeShareSettings(body); const token=randomToken(32); const encrypted=await encryptSecret(token,env.MASTER_ENCRYPTION_KEY); const now=Math.floor(Date.now()/1000);
+    const settings=normalizeShareSettings(body);if(settings.mode==='classroom')await assertLiveActivityInPath(path.id,settings.liveActivityId);const token=randomToken(32); const encrypted=await encryptSecret(token,env.MASTER_ENCRYPTION_KEY); const now=Math.floor(Date.now()/1000);
     let shortCode=''; for(let attempt=0;attempt<8;attempt+=1){const candidate=randomToken(6).replace(/[^A-Za-z0-9]/g,'').slice(0,7).toUpperCase(); const exists=(await getDb().select({id:trainingShares.id}).from(trainingShares).where(eq(trainingShares.shortCode,candidate)).limit(1))[0]; if(!exists){shortCode=candidate;break;}}
     if(!shortCode) throw new AppError(503,'Le code court n’a pas pu être généré. Réessayez.','SHORT_CODE_UNAVAILABLE');
     const id=crypto.randomUUID(); await getDb().insert(trainingShares).values({id,trainerId:user.id,trainingId,pathId:path.id,tokenHash:await sha256(`${token}${env.SECURITY_PEPPER}`),tokenCiphertext:encrypted.ciphertext,tokenIv:encrypted.iv,shortCode,...settings,status:'active',accessCount:0,createdAt:now,updatedAt:now});

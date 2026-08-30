@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { and, eq } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { getDb } from '@/db';
-import { learnerParticipants, trainingShares } from '@/db/schema';
+import { learnerParticipants, learningPathItems, trainingShares } from '@/db/schema';
 import { AppError } from '@/lib/app-error';
 import { decryptSecret, sha256 } from '@/lib/security';
 
@@ -11,11 +11,18 @@ export type IdentityMode = 'name' | 'pseudonym' | 'learner_code' | 'anonymous';
 
 export function normalizeShareSettings(body: Record<string, unknown>) {
   const mode: ShareMode = body.mode === 'classroom' ? 'classroom' : 'home';
+  const liveActivityId = mode === 'classroom' ? String(body.liveActivityId ?? '').trim() || null : null;
   const identityMode: IdentityMode = body.identityMode === 'pseudonym' || body.identityMode === 'learner_code' || body.identityMode === 'anonymous' ? body.identityMode : 'name';
   const rawExpiry = String(body.expiresAt ?? '').trim(); let expiresAt: number | null = null;
   if (rawExpiry) { const value = Math.floor(new Date(rawExpiry).getTime() / 1000); if (!Number.isFinite(value) || value <= Math.floor(Date.now() / 1000) + 300) throw new AppError(400, 'Choisissez une expiration située dans plus de cinq minutes.', 'INVALID_SHARE_EXPIRY'); expiresAt = value; }
   const rawLimit = Number(body.maxAccesses); const maxAccesses = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10_000) : null;
-  return { mode, identityMode, expiresAt, maxAccesses, sessionOpen: mode === 'home' || body.sessionOpen !== false };
+  return { mode, liveActivityId, identityMode, expiresAt, maxAccesses, sessionOpen: mode === 'home' || body.sessionOpen !== false };
+}
+
+export async function assertLiveActivityInPath(pathId: string, liveActivityId: string | null) {
+  if (!liveActivityId) throw new AppError(400, 'Choisissez l’activité à ouvrir pendant le cours en direct.', 'LIVE_ACTIVITY_REQUIRED');
+  const item = (await getDb().select({id:learningPathItems.id}).from(learningPathItems).where(and(eq(learningPathItems.pathId,pathId),eq(learningPathItems.activityId,liveActivityId))).limit(1))[0];
+  if (!item) throw new AppError(400, 'Cette activité ne fait pas partie du parcours publié.', 'LIVE_ACTIVITY_NOT_IN_PATH');
 }
 
 export async function ownedShare(id: string, trainerId: string) {

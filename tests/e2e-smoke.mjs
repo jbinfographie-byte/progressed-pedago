@@ -146,6 +146,14 @@ const unconfiguredMicrosoft=await callError('/api/connections/microsoft/start',{
 assert.equal(unconfiguredMicrosoft.status,503);
 assert.equal(unconfiguredMicrosoft.error.code,'PROVIDER_CONFIGURATION_REQUIRED');
 
+const directShare=await call('/api/shares',{cookie:trainer.cookie,method:'POST',body:{trainingId:firstTrainingId,mode:'classroom',liveActivityId:pathActivityIds[4],identityMode:'anonymous',maxAccesses:50}});
+const directToken=decodeURIComponent(new URL(directShare.data.share.url).pathname.split('/').pop());const directPath=`/api/public/shares/${encodeURIComponent(directToken)}`;
+const directTraining=await call(directPath);assert.equal(directTraining.data.share.mode,'classroom');assert.equal(directTraining.data.path.items.length,1);assert.equal(directTraining.data.path.items[0].activityId,pathActivityIds[4]);
+const directLearner=await call(`${directPath}/participants`,{method:'POST',body:{}});assert.ok(directLearner.cookie);
+const directProgress=await call(`${directPath}/progress`,{cookie:directLearner.cookie,method:'PATCH',body:{pathItemId:directTraining.data.path.items[0].pathItemId,status:'passed',score:1,maxScore:1,durationSeconds:15,answers:[0]}});assert.equal(directProgress.data.progressPercent,100);
+await call(`/api/shares/${directShare.data.share.id}`,{cookie:trainer.cookie,method:'PATCH',body:{liveActivityId:pathActivityIds[6]}});const changedDirectTraining=await call(directPath,{cookie:directLearner.cookie});assert.equal(changedDirectTraining.data.path.items[0].activityId,pathActivityIds[6]);
+await call(`/api/shares/${directShare.data.share.id}`,{cookie:trainer.cookie,method:'PATCH',body:{sessionOpen:false}});const closedDirect=await callError(directPath,{cookie:directLearner.cookie});assert.equal(closedDirect.status,423);assert.equal(closedDirect.error.code,'CLASSROOM_SESSION_CLOSED');
+
 const createdShare=await call('/api/shares',{cookie:trainer.cookie,method:'POST',body:{trainingId:firstTrainingId,mode:'home',identityMode:'pseudonym',maxAccesses:50}});
 assert.ok(createdShare.data.share.url);
 const shareId=createdShare.data.share.id;const publicToken=decodeURIComponent(new URL(createdShare.data.share.url).pathname.split('/').pop());const publicPath=`/api/public/shares/${encodeURIComponent(publicToken)}`;
@@ -176,4 +184,4 @@ if(process.env.KEEP_SHARE_ACTIVE==='1')console.log(`QA_SHARE_URL=${baseUrl}/join
 const resetRequest = await call('/api/auth/password-reset/request', { method: 'POST', body: { email: trainerEmail } });
 assert.match(resetRequest.data.message,/30 minutes/);
 
-console.log(`Parcours complet validé : admin → ${trainerEmail} → droits → hiérarchie → 10 activités → ressource externe → QR anonyme → reprise à 20 % → résultats session → PNG/PDF/Excel → révocation.`);
+console.log(`Parcours complet validé : admin → ${trainerEmail} → droits → hiérarchie → 10 activités → ressource externe → QR direct sur une activité → fermeture de session → parcours domicile → reprise à 20 % → résultats → PNG/PDF/Excel → révocation.`);

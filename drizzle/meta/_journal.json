@@ -71,6 +71,13 @@
       "when": 1788021093863,
       "tag": "0009_orange_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788067995646,
+      "tag": "0010_petite_human_robot",
+      "breakpoints": true
     }
   ]
 }

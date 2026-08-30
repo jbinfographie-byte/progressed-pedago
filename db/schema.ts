@@ -232,6 +232,7 @@ export const trainingShares = sqliteTable('training_shares', {
   tokenIv: text('token_iv').notNull(),
   shortCode: text('short_code').notNull(),
   mode: text('mode', { enum: ['classroom', 'home'] }).notNull().default('home'),
+  liveActivityId: text('live_activity_id').references(() => activities.id, { onDelete: 'set null' }),
   identityMode: text('identity_mode', { enum: ['name', 'pseudonym', 'learner_code', 'anonymous'] }).notNull().default('name'),
   status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
   sessionOpen: integer('session_open', { mode: 'boolean' }).notNull().default(true),
