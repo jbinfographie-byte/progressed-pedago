@@ -1,5 +1,7 @@
 import { ACTIVITY_TYPES, type ActivityType } from '@/lib/activity-types';
+/* eslint-disable @next/next/no-img-element */
 import { normalizeScenarioContent } from '@/lib/scenario';
+import { courseImagesFromContent, type CourseImage, type CourseImagePlacement } from '@/lib/course-images';
 
 export type PrintableActivity = {
   type: ActivityType;
@@ -39,6 +41,7 @@ export function StructuredExplanation({ text, compact = false }: { text: string;
 
 export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }) {
   const sources = activity.sources ?? [];
+  const courseImages = courseImagesFromContent(activity.content).filter((image) => image.status === 'validated');
   return <article className="print-sheet" aria-hidden="true">
     <header className="print-cover">
       <div className="print-brand"><span>P</span><div><strong>Progressed Pédago</strong><small>Support pédagogique prêt à animer</small></div></div>
@@ -46,9 +49,11 @@ export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }
       <p>{activity.theme || 'Activité pédagogique'}</p>
       <h1>{activity.title}</h1>
       <div className="print-meta"><span><b>Public</b>{activity.audience || 'Adultes en formation'}</span><span><b>Niveau</b>{levelLabel(activity.level)}</span><span><b>Durée</b>{activity.durationMinutes ? `${activity.durationMinutes} min` : 'À adapter'}</span></div>
+      <PrintCourseImages images={courseImages} placement="cover" />
     </header>
 
     <section className="print-identity"><span>Prénom et nom : <i /></span><span>Date : <i /></span><span>Groupe : <i /></span></section>
+    <PrintCourseImages images={courseImages} placement="introduction" />
 
     <section className="print-introduction print-block">
       <div><span className="print-number">1</span><div><p className="print-kicker">Objectifs</p><h2>Ce que vous allez apprendre</h2></div></div>
@@ -58,11 +63,15 @@ export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }
 
     {activity.explanation && <section className="print-course print-block">
       <div><span className="print-number">2</span><div><p className="print-kicker">Mini-cours</p><h2>Comprendre avant de pratiquer</h2></div></div>
+      <PrintCourseImages images={courseImages} placement="explanation" />
       <StructuredExplanation text={activity.explanation} />
+      <PrintCourseImages images={courseImages} placement="example" />
+      <PrintCourseImages images={courseImages} placement="procedure" />
     </section>}
 
     <section className="print-exercise print-block print-page-start">
       <div><span className="print-number">3</span><div><p className="print-kicker">Exercice</p><h2>{formatLabel(activity.type)}</h2></div></div>
+      <PrintCourseImages images={courseImages} placement="scenario" />
       <PrintableMechanic type={activity.type} content={activity.content} />
     </section>
 
@@ -71,10 +80,16 @@ export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }
       <div><span className="print-number">4</span><div><p className="print-kicker">Correction expliquée</p><h2>Réponses et points de vigilance</h2></div></div>
       <PrintableAnswers type={activity.type} content={activity.content} />
       {activity.correction && <div className="print-global-correction"><strong>Synthèse de la correction</strong><StructuredExplanation text={activity.correction} compact /></div>}
+      <PrintCourseImages images={courseImages} placement="synthesis" />
       {!!sources.length && <div className="print-sources"><strong>Références utilisées</strong>{sources.map((source,index) => <p key={index}>{source.organization ? `${source.organization} — ` : ''}{source.title}{source.usedFor ? ` · ${source.usedFor}` : ''}</p>)}</div>}
     </section>
     <footer className="print-footer"><span>Progressed Pédago</span><span>{activity.title}</span></footer>
   </article>;
+}
+
+function PrintCourseImages({images,placement}:{images:CourseImage[];placement:CourseImagePlacement}) {
+  const visible=images.filter((image)=>image.placement===placement); if(!visible.length)return null;
+  return <div className={`print-course-images print-placement-${placement}`}>{visible.map((image)=><figure key={image.id}><img src={image.url} alt={image.altText}/>{image.caption&&<figcaption>{image.caption}</figcaption>}</figure>)}</div>;
 }
 
 function PrintableMechanic({ type,content }: { type: ActivityType; content: Record<string,unknown> }) {

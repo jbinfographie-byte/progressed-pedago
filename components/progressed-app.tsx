@@ -73,7 +73,7 @@ export function ProgressedApp({ initialAuthOpen = false,initialResetToken = '',i
     {studioOpen && <AiStudioDialog defaults={studioDefaults} onClose={() => {setStudioOpen(false);setStudioDefaults(null);}} onCreated={async (message) => { setStudioOpen(false);setStudioDefaults(null);await loadActivities();setSection('activities');notify(message); }} />}
     {manualType && <ManualActivityDialog type={manualType} onClose={() => setManualType(null)} onCreated={async () => { setManualType(null); await loadActivities(); setSection('activities'); notify('L’activité et son support pédagogique sont enregistrés.'); }} />}
     {editingActivity && <ManualActivityDialog type={editingActivity.type} initial={editingActivity} onClose={() => setEditingActivity(null)} onCreated={async () => { setEditingActivity(null); await loadActivities(); setSection('activities'); notify('Les modifications de l’activité sont enregistrées.'); }} />}
-    {playing && <ActivityPlayer activity={playing} onClose={() => setPlaying(null)} />}
+    {playing && <ActivityPlayer activity={playing} canManageImages onClose={() => setPlaying(null)} />}
     {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
   </main>;
 }
