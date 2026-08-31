@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIVITY_TYPES, CREATABLE_ACTIVITY_TYPES, isCreatableActivityType, normalizeAnswer, validateActivityDraft, validateMechanic, type ActivityType } from '../lib/activity-types.ts';
+import { ACTIVITY_TYPES, CREATABLE_ACTIVITY_TYPES, MANUAL_ACTIVITY_TYPES, isCreatableActivityType, isManualActivityType, normalizeAnswer, validateActivityDraft, validateMechanic, type ActivityType } from '../lib/activity-types.ts';
 import { SCENARIO_EXAMPLE_CONTENT, validateScenarioContent } from '../lib/scenario.ts';
 
 function validContent(type: ActivityType): Record<string, unknown> {
@@ -31,6 +31,12 @@ test('seuls les quatre formats demandés sont proposés à la création', () => 
   assert.deepEqual(CREATABLE_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario']);
   assert.equal(isCreatableActivityType('scenario'), true);
   assert.equal(isCreatableActivityType('word-search'), false);
+});
+
+test('l’atelier manuel propose dix formats guidés sans charger le tableau de bord', () => {
+  assert.deepEqual(MANUAL_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll']);
+  assert.equal(isManualActivityType('matching'),true);
+  assert.equal(isManualActivityType('word-search'),false);
 });
 
 for (const [type, label] of ACTIVITY_TYPES) {

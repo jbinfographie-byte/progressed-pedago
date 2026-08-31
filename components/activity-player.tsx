@@ -78,8 +78,8 @@ function Mechanic({ type, content,activity,journey }: { type: ActivityType; cont
   if (type === 'crossword') return <Crossword content={content} />;
   if (type === 'hangman') return <Hangman content={content} />;
   if (['spell-word','ranking','unravel','anagram'].includes(type)) return <Ordering content={content} letters={type === 'spell-word' || type === 'anagram'} />;
-  if (type === 'drag-drop') return <DragDrop content={content} />;
-  if (['matching','categories','labelled-diagram'].includes(type)) return <Classifier content={content} />;
+  if (type === 'drag-drop' || type === 'matching') return <DragDrop content={type === 'matching' ? {...content,mode:'association'} : content} />;
+  if (['categories','labelled-diagram'].includes(type)) return <Classifier content={content} />;
   if (type === 'type-answer') return <TypedAnswer content={content} />;
   if (type === 'maze') return <Maze content={content} />;
   if (type === 'scenario') return <Scenario content={content} activity={activity} journey={journey} />;

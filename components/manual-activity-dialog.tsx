@@ -1,32 +1,46 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { ACTIVITY_TYPES, type ActivityDraft, type ActivityType } from '@/lib/activity-types';
+import { ACTIVITY_TYPES, MANUAL_ACTIVITY_TYPES, isManualActivityType, type ActivityDraft, type ActivityType } from '@/lib/activity-types';
 import { buildManualPedagogy } from '@/lib/manual-pedagogy';
 import { SCENARIO_EXAMPLE_CONTENT, type ScenarioContent, type ScenarioScene } from '@/lib/scenario';
 
 type Question = { question: string; choices: string[]; correctIndex: number; explanation: string };
+type ContentRow = Record<string,unknown>;
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
 type EditableActivity = ActivityDraft & { id: string; status: 'draft' | 'published' };
 
+const manualSymbols: Partial<Record<ActivityType,string>> = { quiz:'?', 'drag-drop':'↕', 'true-false':'✓',scenario:'➜',matching:'⇄',ranking:'≡','revision-cards':'▤','type-answer':'⌨','question-wheel':'✺','live-poll':'◔' };
+
 export function ManualActivityDialog({ type,initial,onClose,onCreated }: { type: ActivityType; initial?: EditableActivity | null; onClose: () => void; onCreated: () => void }) {
-  const definition = ACTIVITY_TYPES.find(([candidate]) => candidate === type)!;
+  const [activityType,setActivityType] = useState<ActivityType>(type);
+  const definition = ACTIVITY_TYPES.find(([candidate]) => candidate === activityType)!;
   const [questions,setQuestions] = useState<Question[]>(() => initial ? questionsFromContent(initial.content) : [emptyQuestion()]);
   const [contentJson,setContentJson] = useState(() => JSON.stringify(initial?.content ?? starterContent(type),null,2));
+  const [structuredContent,setStructuredContent] = useState<Record<string,unknown>>(() => initial?.content ?? starterContent(type));
   const [scenario,setScenario] = useState<ScenarioContent>(() => initial?.type === 'scenario' ? cloneScenario(initial.content as ScenarioContent) : cloneScenario(SCENARIO_EXAMPLE_CONTENT));
   const [error,setError] = useState(''); const [busy,setBusy] = useState(false);
-  const isQuiz = type === 'quiz' || type === 'tv-quiz';
-  const isScenario = type === 'scenario';
+  const isQuiz = activityType === 'quiz' || activityType === 'tv-quiz';
+  const isScenario = activityType === 'scenario';
+  const hasGuidedEditor = isManualActivityType(activityType);
+
+  const chooseType = (nextType: ActivityType) => {
+    if (initial || nextType === activityType) return;
+    const nextContent = starterContent(nextType);
+    setActivityType(nextType); setQuestions(questionsFromContent(nextContent)); setStructuredContent(nextContent);
+    setScenario(cloneScenario(SCENARIO_EXAMPLE_CONTENT));
+    setContentJson(JSON.stringify(nextContent,null,2)); setError('');
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError(''); const form = new FormData(event.currentTarget);
     try {
-      const content = isQuiz ? {...(initial?.content??{}),...quizContent(questions)} : isScenario ? {...(initial?.content??{}),...scenario} : JSON.parse(contentJson) as Record<string,unknown>;
+      const content = isQuiz ? {...(initial?.content??{}),...quizContent(questions)} : isScenario ? {...(initial?.content??{}),...scenario} : hasGuidedEditor ? structuredContent : JSON.parse(contentJson) as Record<string,unknown>;
       const title = String(form.get('title') ?? '').trim();
       const objectives = String(form.get('objectives') ?? '').split('\n').map((item) => item.trim()).filter(Boolean);
-      const automatic = buildManualPedagogy(type,title,objectives,content);
+      const automatic = buildManualPedagogy(activityType,title,objectives,content);
       const response = await fetch(initial ? `/api/activities/${initial.id}` : '/api/activities',{method:initial ? 'PATCH' : 'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        type,title,theme:String(form.get('theme') ?? '').trim(),audience:String(form.get('audience') ?? '').trim(),level:form.get('level'),objectives,
+        type:activityType,title,theme:String(form.get('theme') ?? '').trim(),audience:String(form.get('audience') ?? '').trim(),level:form.get('level'),objectives,
         durationMinutes:Number(form.get('durationMinutes')),instructions:String(form.get('instructions') ?? '').trim(),
         explanation:String(form.get('explanation') ?? '').trim() || automatic.explanation,
         correction:String(form.get('correction') ?? '').trim() || automatic.correction,
@@ -42,7 +56,8 @@ export function ManualActivityDialog({ type,initial,onClose,onCreated }: { type:
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="manual-title"><form className="modal-card studio-card manual-activity-card" onSubmit={submit}>
     <button className="modal-close" type="button" onClick={onClose} aria-label="Fermer">×</button>
     <p className="overline">{initial ? 'Modification' : 'Création manuelle'} · {definition[1]}</p><h2 id="manual-title">{initial ? 'Relire et ajuster l’activité.' : 'Construire l’activité simplement.'}</h2>
-    <p>{initial ? 'Corrigez les scènes, les décisions et les explications avant de publier ou d’animer.' : 'Renseignez le contenu pédagogique : le mini-cours, les explications et le corrigé A4 seront composés automatiquement.'}</p>
+    <p>{initial ? 'Corrigez le contenu et les explications avant de publier ou d’animer.' : 'Choisissez un format, renseignez son contenu sans code : le mini-cours, les explications et le corrigé A4 seront composés automatiquement.'}</p>
+    {!initial && <section className="manual-format-picker" aria-label="Choisir le format de l’activité"><header><strong>Quel type d’activité souhaitez-vous construire ?</strong><small>Vous pourrez changer de format avant de commencer.</small></header><div>{MANUAL_ACTIVITY_TYPES.map(([candidate,title,copy]) => <button className={activityType === candidate ? 'active' : ''} type="button" onClick={() => chooseType(candidate)} aria-pressed={activityType === candidate} key={candidate}><span>{manualSymbols[candidate] ?? '◇'}</span><b>{title}</b><small>{copy}</small></button>)}</div></section>}
     <section className="manual-section"><div className="manual-section-title"><span>1</span><div><strong>Cadre pédagogique</strong><small>Les informations visibles dans le cours et sur le support imprimé.</small></div></div>
       <div className="form-row"><label>Titre<input name="title" required defaultValue={initial?.title ?? (isScenario ? 'Un résident refuse l’entretien de sa chambre' : '')} placeholder="Ex. Prévenir les risques de chute" /></label><label>Thème<input name="theme" required defaultValue={initial?.theme ?? (isScenario ? 'Relation avec le résident' : '')} placeholder="Ex. Sécurité au travail" /></label><label>Durée<input name="durationMinutes" type="number" min="1" max="480" defaultValue={initial?.durationMinutes ?? (isScenario ? 20 : 10)} required /></label></div>
       <div className="form-row two"><label>Public concerné<input name="audience" defaultValue={initial?.audience ?? ''} placeholder="Ex. Agents de propreté débutants" /></label><label>Niveau<select name="level" defaultValue={initial?.level ?? 'debutant'}><option value="debutant">Débutant</option><option value="intermediaire">Intermédiaire</option><option value="avance">Avancé</option></select></label></div>
@@ -50,8 +65,8 @@ export function ManualActivityDialog({ type,initial,onClose,onCreated }: { type:
       <label>Consigne donnée aux participants<textarea name="instructions" rows={2} defaultValue={initial?.instructions ?? (isScenario ? 'Lisez chaque situation, choisissez une réaction, validez votre décision puis analysez ses conséquences avant de continuer.' : '')} placeholder="Ex. Répondez aux questions puis justifiez chaque choix." /></label>
     </section>
 
-    <section className="manual-section"><div className="manual-section-title"><span>2</span><div><strong>Contenu de l’activité</strong><small>{isQuiz ? 'Ajoutez les questions sans écrire de code.' : 'Le contenu de ce format peut être ajusté dans l’éditeur avancé.'}</small></div></div>
-      {isQuiz ? <QuizEditor questions={questions} onChange={setQuestions} /> : isScenario ? <ScenarioEditor value={scenario} onChange={setScenario} /> : <details className="advanced-editor"><summary>Modifier le contenu du jeu</summary><p>Cette zone avancée conserve la structure nécessaire au fonctionnement du jeu.</p><textarea aria-label="Contenu avancé du jeu" className="code-editor" value={contentJson} onChange={(event) => setContentJson(event.target.value)} rows={12} spellCheck={false} /></details>}
+    <section className="manual-section"><div className="manual-section-title"><span>2</span><div><strong>Contenu de l’activité</strong><small>{hasGuidedEditor ? 'Ajoutez les éléments dans le formulaire guidé, sans écrire de code.' : 'Le contenu de ce format reste disponible dans l’éditeur avancé.'}</small></div></div>
+      {isQuiz ? <QuizEditor questions={questions} onChange={setQuestions} /> : isScenario ? <ScenarioEditor value={scenario} onChange={setScenario} /> : hasGuidedEditor ? <GuidedActivityEditor type={activityType} value={structuredContent} onChange={setStructuredContent} /> : <details className="advanced-editor"><summary>Modifier le contenu du jeu</summary><p>Cette zone avancée conserve la structure nécessaire au fonctionnement du jeu.</p><textarea aria-label="Contenu avancé du jeu" className="code-editor" value={contentJson} onChange={(event) => setContentJson(event.target.value)} rows={12} spellCheck={false} /></details>}
     </section>
 
     <section className="manual-section automatic-pedagogy"><div className="manual-section-title"><span>3</span><div><strong>Cours et corrigé automatiques</strong><small>Vous pouvez les personnaliser, mais ils ne resteront plus vides.</small></div></div>
@@ -76,6 +91,73 @@ function QuizEditor({ questions,onChange }: { questions: Question[]; onChange: (
 function emptyQuestion(): Question { return { question:'',choices:['','',''],correctIndex:0,explanation:'' }; }
 function questionsFromContent(content: unknown): Question[] { const rows = (content as { questions?: Question[] } | null)?.questions; return Array.isArray(rows) && rows.length ? rows.map((row) => ({ question:String(row.question ?? ''),choices:Array.isArray(row.choices) ? row.choices.map(String) : ['','',''],correctIndex:Number(row.correctIndex ?? 0),explanation:String(row.explanation ?? '') })) : [emptyQuestion()]; }
 function quizContent(questions: Question[]) { return { questions:questions.map((item) => ({ question:item.question.trim(),choices:item.choices.map((choice) => choice.trim()),correctIndex:item.correctIndex,explanation:item.explanation.trim() })) }; }
+
+function GuidedActivityEditor({ type,value,onChange }: { type:ActivityType;value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  if (type === 'drag-drop' || type === 'matching') return <DragDropEditor value={value} onChange={onChange} visualAllowed={type === 'drag-drop'} />;
+  if (type === 'true-false') return <TrueFalseEditor value={value} onChange={onChange} />;
+  if (type === 'ranking') return <RankingEditor value={value} onChange={onChange} />;
+  if (type === 'revision-cards') return <RevisionCardsEditor value={value} onChange={onChange} />;
+  if (type === 'type-answer') return <TypedPromptsEditor value={value} onChange={onChange} />;
+  if (type === 'question-wheel') return <QuestionWheelEditor value={value} onChange={onChange} />;
+  if (type === 'live-poll') return <LivePollEditor value={value} onChange={onChange} />;
+  return null;
+}
+
+function TrueFalseEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const rows = contentRows(value.statements);
+  const update = (index:number,patch:ContentRow) => onChange({...value,statements:rows.map((row,rowIndex) => rowIndex === index ? {...row,...patch} : row)});
+  return <div className="simple-editor">{rows.map((row,index) => <article className="simple-editor-card" key={String(row.id ?? index)}><header><strong>Affirmation {index + 1}</strong><button type="button" disabled={rows.length <= 1} onClick={() => onChange({...value,statements:rows.filter((_,rowIndex) => rowIndex !== index)})}>Supprimer</button></header><label>Affirmation<input required value={field(row.text)} onChange={(event) => update(index,{text:event.target.value})} placeholder="Ex. Une zone humide doit toujours être balisée." /></label><fieldset><legend>Bonne réponse</legend><div className="binary-editor-choice"><label className={Boolean(row.answer) ? 'active' : ''}><input type="radio" name={`truth-${index}`} checked={Boolean(row.answer)} onChange={() => update(index,{answer:true})} />Vrai</label><label className={!Boolean(row.answer) ? 'active' : ''}><input type="radio" name={`truth-${index}`} checked={!Boolean(row.answer)} onChange={() => update(index,{answer:false})} />Faux</label></div></fieldset><label>Explication pédagogique<textarea rows={2} value={field(row.explanation)} onChange={(event) => update(index,{explanation:event.target.value})} placeholder="Expliquez pourquoi l’affirmation est vraie ou fausse." /></label></article>)}<button className="add-question" type="button" onClick={() => onChange({...value,statements:[...rows,{id:`statement-${Date.now()}`,text:'',answer:true,explanation:''}]})}>＋ Ajouter une affirmation</button></div>;
+}
+
+function DragDropEditor({ value,onChange,visualAllowed }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void;visualAllowed:boolean }) {
+  const mode = visualAllowed && value.mode === 'visual' ? 'visual' : 'association';
+  const targets = contentRows(mode === 'visual' ? value.zones : value.categories);
+  const items = contentRows(value.items);
+  const rows = Array.from({length:Math.max(targets.length,items.length,2)},(_,index) => ({target:targets[index] ?? {},item:items[index] ?? {}}));
+  const emit = (nextTargets:ContentRow[],nextItems:ContentRow[],nextMode = mode) => onChange({...value,mode:nextMode,instruction:field(value.instruction),categories:nextMode === 'association' ? nextTargets : undefined,zones:nextMode === 'visual' ? nextTargets : undefined,items:nextItems});
+  const update = (index:number,targetPatch:ContentRow,itemPatch:ContentRow = {}) => {
+    const current = rows[index]; const id = field(current.target.id,current.item.category) || `target-${index + 1}`;
+    const nextTargets = rows.map((row,rowIndex) => rowIndex === index ? {...row.target,id,...targetPatch} : {...row.target,id:field(row.target.id,row.item.category) || `target-${rowIndex + 1}`});
+    const nextItems = rows.map((row,rowIndex) => { const targetId = field(nextTargets[rowIndex].id); return rowIndex === index ? {...row.item,id:field(row.item.id) || `item-${rowIndex + 1}`,category:targetId,...itemPatch} : {...row.item,id:field(row.item.id) || `item-${rowIndex + 1}`,category:targetId}; });
+    emit(nextTargets,nextItems);
+  };
+  const switchMode = (nextMode:'association'|'visual') => emit(rows.map((row,index) => ({...row.target,id:field(row.target.id,row.item.category) || `target-${index + 1}`})),rows.map((row,index) => ({...row.item,id:field(row.item.id) || `item-${index + 1}`,category:field(row.target.id,row.item.category) || `target-${index + 1}`})),nextMode);
+  const add = () => { const id = `target-${Date.now()}`; emit([...targets,{id,label:mode === 'visual' ? 'Nouveau visuel' : `Définition ${targets.length + 1}`,description:'',imageUrl:''}],[...items,{id:`item-${Date.now()}`,label:'',category:id,explanation:''}]); };
+  const remove = (index:number) => emit(rows.filter((_,rowIndex) => rowIndex !== index).map((row,rowIndex) => ({...row.target,id:field(row.target.id,row.item.category) || `target-${rowIndex + 1}`})),rows.filter((_,rowIndex) => rowIndex !== index).map((row,rowIndex) => ({...row.item,id:field(row.item.id) || `item-${rowIndex + 1}`,category:field(row.target.id,row.item.category) || `target-${rowIndex + 1}`})));
+  return <div className="simple-editor drag-drop-editor">{visualAllowed && <div className="editor-mode-switch"><button className={mode === 'association' ? 'active' : ''} type="button" onClick={() => switchMode('association')}><span>↔</span><b>Étiquettes et définitions</b><small>Associer un terme à une explication.</small></button><button className={mode === 'visual' ? 'active' : ''} type="button" onClick={() => switchMode('visual')}><span>▧</span><b>Étiquettes et visuels</b><small>Associer un terme à une image ou une zone.</small></button></div>}<label>Consigne de l’exercice<input value={field(value.instruction)} onChange={(event) => onChange({...value,instruction:event.target.value})} placeholder="Ex. Associez chaque document à sa définition." /></label>{mode === 'visual' && <label>Image générale de fond, facultative<input type="url" value={field(value.imageUrl)} onChange={(event) => onChange({...value,imageUrl:event.target.value})} placeholder="https://…" /></label>}<div className="simple-editor">{rows.map(({target,item},index) => <article className="simple-editor-card association-editor-card" key={field(target.id,item.id) || index}><header><strong>{mode === 'visual' ? `Association visuelle ${index + 1}` : `Association ${index + 1}`}</strong><button type="button" disabled={rows.length <= 2} onClick={() => remove(index)}>Supprimer</button></header><div className="form-row two"><label>Étiquette à déplacer<input required value={field(item.label,item.text)} onChange={(event) => update(index,{}, {label:event.target.value})} placeholder="Ex. Cahier de liaison" /></label><label>{mode === 'visual' ? 'Nom du visuel ou de la zone' : 'Titre court de la destination'}<input required value={field(target.label,target.title)} onChange={(event) => update(index,{label:event.target.value})} placeholder={mode === 'visual' ? 'Ex. Produit inflammable' : `Ex. Définition ${index + 1}`} /></label></div><label>{mode === 'visual' ? 'Description du visuel' : 'Définition à associer'}<textarea required rows={2} value={field(target.description,target.definition,target.text)} onChange={(event) => update(index,{description:event.target.value})} placeholder="Décrivez clairement la destination correcte." /></label>{mode === 'visual' && <div className="form-row"><label>Image de cette zone<input type="url" value={field(target.imageUrl)} onChange={(event) => update(index,{imageUrl:event.target.value})} placeholder="https://…" /></label><label>Position horizontale %<input type="number" min="0" max="100" value={field(target.x)} onChange={(event) => update(index,{x:event.target.value === '' ? undefined : Number(event.target.value)})} /></label><label>Position verticale %<input type="number" min="0" max="100" value={field(target.y)} onChange={(event) => update(index,{y:event.target.value === '' ? undefined : Number(event.target.value)})} /></label></div>}<label>Explication après correction<textarea rows={2} value={field(item.explanation)} onChange={(event) => update(index,{}, {explanation:event.target.value})} placeholder="Expliquez le lien entre l’étiquette et sa destination." /></label></article>)}</div><button className="add-question" type="button" onClick={add}>＋ Ajouter une association</button></div>;
+}
+
+function RankingEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const rows = contentRows(value.items);
+  const change = (index:number,label:string) => onChange({...value,items:rows.map((row,rowIndex) => rowIndex === index ? {...row,label} : row)});
+  const move = (index:number,direction:-1|1) => { const target = index + direction; if (target < 0 || target >= rows.length) return; const next = [...rows]; [next[index],next[target]] = [next[target],next[index]]; onChange({...value,items:next}); };
+  return <div className="simple-editor"><p className="editor-help">Saisissez les étapes directement dans l’ordre attendu. Elles seront mélangées pour l’apprenant.</p>{rows.map((row,index) => <article className="list-editor-row" key={String(row.id ?? index)}><span>{index + 1}</span><input required value={field(row.label,row.text)} onChange={(event) => change(index,event.target.value)} placeholder="Ex. Préparer le matériel" /><div><button type="button" disabled={index === 0} onClick={() => move(index,-1)}>↑</button><button type="button" disabled={index === rows.length - 1} onClick={() => move(index,1)}>↓</button><button type="button" disabled={rows.length <= 2} onClick={() => onChange({...value,items:rows.filter((_,rowIndex) => rowIndex !== index)})}>×</button></div></article>)}<button className="add-question" type="button" onClick={() => onChange({...value,items:[...rows,{id:`step-${Date.now()}`,label:''}]})}>＋ Ajouter une étape</button></div>;
+}
+
+function RevisionCardsEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const rows = contentRows(value.cards);
+  const update = (index:number,patch:ContentRow) => onChange({...value,cards:rows.map((row,rowIndex) => rowIndex === index ? {...row,...patch} : row)});
+  return <div className="simple-editor">{rows.map((row,index) => <article className="simple-editor-card" key={String(row.id ?? index)}><header><strong>Carte {index + 1}</strong><button type="button" disabled={rows.length <= 1} onClick={() => onChange({...value,cards:rows.filter((_,rowIndex) => rowIndex !== index)})}>Supprimer</button></header><div className="form-row two"><label>Recto · question<textarea required rows={2} value={field(row.front,row.label)} onChange={(event) => update(index,{front:event.target.value})} placeholder="Ex. Que signifie EPI ?" /></label><label>Verso · réponse<textarea required rows={2} value={field(row.back,row.answer)} onChange={(event) => update(index,{back:event.target.value})} placeholder="Ex. Équipement de protection individuelle" /></label></div></article>)}<button className="add-question" type="button" onClick={() => onChange({...value,cards:[...rows,{id:`card-${Date.now()}`,front:'',back:''}]})}>＋ Ajouter une carte</button></div>;
+}
+
+function TypedPromptsEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const rows = contentRows(value.prompts);
+  const update = (index:number,patch:ContentRow) => onChange({...value,prompts:rows.map((row,rowIndex) => rowIndex === index ? {...row,...patch} : row)});
+  return <div className="simple-editor">{rows.map((row,index) => <article className="simple-editor-card" key={String(row.id ?? index)}><header><strong>Question {index + 1}</strong><button type="button" disabled={rows.length <= 1} onClick={() => onChange({...value,prompts:rows.filter((_,rowIndex) => rowIndex !== index)})}>Supprimer</button></header><label>Question<input required value={field(row.question)} onChange={(event) => update(index,{question:event.target.value})} /></label><label>Réponse attendue<input required value={field(row.answer)} onChange={(event) => update(index,{answer:event.target.value})} /></label><label>Explication<textarea rows={2} value={field(row.explanation)} onChange={(event) => update(index,{explanation:event.target.value})} /></label></article>)}<button className="add-question" type="button" onClick={() => onChange({...value,prompts:[...rows,{id:`prompt-${Date.now()}`,question:'',answer:'',explanation:''}]})}>＋ Ajouter une question</button></div>;
+}
+
+function QuestionWheelEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const rows = contentRows(value.sectors);
+  return <div className="simple-editor"><p className="editor-help">Chaque secteur de la roue contient une question ou un défi à tirer au hasard.</p>{rows.map((row,index) => <article className="list-editor-row" key={String(row.id ?? index)}><span>{index + 1}</span><input required value={field(row.label,row.text)} onChange={(event) => onChange({...value,sectors:rows.map((item,itemIndex) => itemIndex === index ? {...item,label:event.target.value} : item)})} placeholder="Ex. Pourquoi faut-il baliser la zone ?" /><button type="button" disabled={rows.length <= 2} onClick={() => onChange({...value,sectors:rows.filter((_,rowIndex) => rowIndex !== index)})}>×</button></article>)}<button className="add-question" type="button" onClick={() => onChange({...value,sectors:[...rows,{id:`sector-${Date.now()}`,label:''}]})}>＋ Ajouter une question</button></div>;
+}
+
+function LivePollEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const options = Array.isArray(value.options) ? value.options.map(String) : [];
+  return <div className="simple-editor"><label>Question du sondage<input required value={field(value.question)} onChange={(event) => onChange({...value,question:event.target.value})} placeholder="Ex. Quelle notion souhaitez-vous retravailler ?" /></label>{options.map((option,index) => <article className="list-editor-row" key={index}><span>{String.fromCharCode(65 + index)}</span><input required value={option} onChange={(event) => onChange({...value,options:options.map((item,itemIndex) => itemIndex === index ? event.target.value : item)})} placeholder={`Choix ${index + 1}`} /><button type="button" disabled={options.length <= 2} onClick={() => onChange({...value,options:options.filter((_,itemIndex) => itemIndex !== index)})}>×</button></article>)}<button className="add-question" type="button" onClick={() => onChange({...value,options:[...options,'']})}>＋ Ajouter un choix</button></div>;
+}
+
+function contentRows(value:unknown):ContentRow[] { return Array.isArray(value) ? value.filter((item):item is ContentRow => Boolean(item && typeof item === 'object' && !Array.isArray(item))) : []; }
+function field(...values:unknown[]):string { const value = values.find((item) => typeof item === 'string' || typeof item === 'number'); return value === undefined ? '' : String(value); }
 
 function ScenarioEditor({ value,onChange }: { value:ScenarioContent;onChange:(value:ScenarioContent)=>void }) {
   const minimumScenes = value.mode === 'progressive' || value.mode === 'successive' ? 3 : 1;
@@ -106,6 +188,8 @@ function starterContent(type: ActivityType): Record<string,unknown> {
   if (type === 'maze') return { cells:[{label:'Départ',correct:true},{label:'Baliser',correct:true},{label:'Mélanger',correct:false},{label:'Contrôler',correct:true}] };
   if (type === 'flying-fruits') return { prompts:[{question:'Quel choix protège les mains ?',options:[{label:'Les gants',correct:true},{label:'Le parfum',correct:false},{label:'La cire',correct:false}]}] };
   if (type === 'drag-drop') return { mode:'association',instruction:'Associez chaque document professionnel à sa définition.',categories:[{id:'definition-1',label:'Définition 1',description:'Décrit précisément les tâches confiées à l’agent.'},{id:'definition-2',label:'Définition 2',description:'Permet de consigner les informations et difficultés rencontrées sur le site.'},{id:'definition-3',label:'Définition 3',description:'Précise l’organisation et les périodes de réalisation des travaux.'}],items:[{id:'fiche-poste',label:'Fiche de poste',category:'definition-1',explanation:'La fiche de poste décrit les missions et tâches du salarié.'},{id:'cahier-liaison',label:'Cahier de liaison',category:'definition-2',explanation:'Le cahier de liaison assure la transmission entre les acteurs du site.'},{id:'planning',label:'Planning des travaux',category:'definition-3',explanation:'Le planning organise les interventions dans le temps.'}] };
+  if (type === 'matching') return { mode:'association',instruction:'Associez chaque notion à sa définition.',categories:[{id:'pair-1',label:'Définition 1',description:'Équipement porté pour limiter l’exposition à un risque.'},{id:'pair-2',label:'Définition 2',description:'Signalisation destinée à prévenir les personnes d’un danger temporaire.'}],items:[{id:'notion-1',label:'EPI',category:'pair-1',explanation:'Un EPI protège individuellement le professionnel.'},{id:'notion-2',label:'Balisage',category:'pair-2',explanation:'Le balisage matérialise et signale une zone dangereuse.'}] };
+  if (type === 'ranking') return { items:[{id:'step-1',label:'Préparer le matériel'},{id:'step-2',label:'Baliser la zone'},{id:'step-3',label:'Réaliser l’intervention'},{id:'step-4',label:'Contrôler le résultat'}] };
   if (type === 'categories') return { categories:[{label:'Avant'},{label:'Après'}],items };
   if (['spell-word','anagram'].includes(type)) return { word:'SECURITE',items:'SECURITE'.split('').map((letter) => ({label:letter})) };
   if (type === 'unravel') return { sentence:'Je balise la zone avant de laver',items:'Je balise la zone avant de laver'.split(' ').map((word) => ({label:word})) };

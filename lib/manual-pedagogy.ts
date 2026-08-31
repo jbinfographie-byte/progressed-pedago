@@ -4,6 +4,9 @@ type QuizQuestion = { question?: unknown; choices?: unknown; correctIndex?: unkn
 type TrueFalseStatement = { text?: unknown; answer?: unknown; explanation?: unknown };
 type TypedPrompt = { question?: unknown; answer?: unknown; explanation?: unknown };
 type Card = { front?: unknown; back?: unknown };
+type ClassifiedItem = { label?: unknown; text?: unknown; category?: unknown; explanation?: unknown };
+type Target = { id?: unknown; label?: unknown; description?: unknown; definition?: unknown };
+type LabelledItem = { label?: unknown; text?: unknown };
 
 export function buildManualPedagogy(type: ActivityType, title: string, objectives: string[], content: Record<string, unknown>) {
   const points = extractTeachingPoints(type, content);
@@ -54,6 +57,13 @@ function extractTeachingPoints(type: ActivityType, content: Record<string, unkno
   if (type === 'true-false') return arrayOf<TrueFalseStatement>(content.statements).map((item) => text(item.explanation) || `L’affirmation « ${text(item.text)} » est ${Boolean(item.answer) ? 'vraie' : 'fausse'}.`).filter(Boolean);
   if (type === 'type-answer') return arrayOf<TypedPrompt>(content.prompts).map((item) => text(item.explanation) || `La réponse attendue à « ${text(item.question)} » est « ${text(item.answer)} ».`).filter(Boolean);
   if (['flip-tiles','revision-cards','random-cards','memory-cards','pair-or-not'].includes(type)) return arrayOf<Card>(content.cards).map((item) => `${text(item.front)} : ${text(item.back)}`).filter((value) => value !== ' : ');
+  if (type === 'drag-drop' || type === 'matching' || type === 'categories' || type === 'labelled-diagram') {
+    const targets = arrayOf<Target>(arrayOf(content.zones).length ? content.zones : content.categories);
+    return arrayOf<ClassifiedItem>(content.items).map((item) => { const target = targets.find((candidate) => [text(candidate.id),text(candidate.label)].includes(text(item.category))); return text(item.explanation) || `${text(item.label,item.text)} s’associe à ${text(target?.description,target?.definition,target?.label,item.category)}.`; }).filter(Boolean);
+  }
+  if (type === 'ranking') return arrayOf<LabelledItem>(content.items).map((item,index) => `Étape ${index + 1} : ${text(item.label,item.text)}.`).filter((value) => !value.endsWith(': .'));
+  if (type === 'question-wheel' || type === 'challenge-wheel') return arrayOf<LabelledItem>(content.sectors).map((item) => `Question ou défi à traiter : ${text(item.label,item.text)}.`).filter((value) => !value.endsWith(': .'));
+  if (type === 'live-poll') return [`Le sondage « ${text(content.question)} » permet de recueillir et comparer les représentations du groupe.`];
   return [];
 }
 
@@ -64,9 +74,11 @@ function buildCorrectionLines(type: ActivityType, content: Record<string, unknow
   });
   if (type === 'true-false') return arrayOf<TrueFalseStatement>(content.statements).map((item,index) => `Affirmation ${index + 1} — ${Boolean(item.answer) ? 'Vrai' : 'Faux'}. ${text(item.explanation)}`.trim());
   if (type === 'type-answer') return arrayOf<TypedPrompt>(content.prompts).map((item,index) => `Question ${index + 1} — ${text(item.answer)}. ${text(item.explanation)}`.trim());
+  if (type === 'drag-drop' || type === 'matching' || type === 'categories' || type === 'labelled-diagram') return extractTeachingPoints(type,content);
+  if (type === 'ranking') return [`Ordre attendu — ${arrayOf<LabelledItem>(content.items).map((item) => text(item.label,item.text)).filter(Boolean).join(' → ')}.`];
   return extractTeachingPoints(type, content);
 }
 
 function arrayOf<T>(value: unknown): T[] { return Array.isArray(value) ? value as T[] : []; }
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.map(text) : []; }
-function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
+function text(...values: unknown[]): string { const value = values.find((item) => typeof item === 'string' && item.trim()); return typeof value === 'string' ? value.trim() : ''; }
