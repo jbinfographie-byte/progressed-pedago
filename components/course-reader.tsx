@@ -23,7 +23,6 @@ export function CoursePageContent({page,images,print=false}:{page:CoursePage;ima
     {!!page.examples.length&&<section className="course-examples"><h4>Exemples professionnels</h4>{page.examples.map((item)=><article key={item.title}><strong>{item.title}</strong><p>{item.description}</p></article>)}</section>}
     {!!page.keyPoints.length&&<section className="course-key-points"><h4>Points importants à retenir</h4><ul>{page.keyPoints.map((item)=><li key={item}>{item}</li>)}</ul></section>}
     {(page.practice.title||page.practice.instructions)&&<CoursePracticeBlock key={page.id} page={page} print={print}/>}
-    {!!page.sourceRefs.length&&<footer className="course-source-refs"><strong>Pages sources vérifiées :</strong> {page.sourceRefs.map((source,index)=><a href={`/api/files/${encodeURIComponent(source.documentId)}?preview=1#page=${source.pageNumber}`} target="_blank" rel="noreferrer" key={`${source.documentId}-${source.pageNumber}-${index}`}>p. {source.pageNumber}</a>)}</footer>}
   </div>;
 }
 
