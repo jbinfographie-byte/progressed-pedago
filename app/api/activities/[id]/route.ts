@@ -11,7 +11,16 @@ async function owned(id: string, userId: string) { const row = (await getDb().se
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) { try { const user = await requireUser(); const row = await owned((await context.params).id, user.id); return jsonOk({ activity: { ...row, objectives: JSON.parse(row.objectivesJson), content: JSON.parse(row.contentJson), sources: JSON.parse(row.sourcesJson) } }); } catch (error) { return jsonError(error); } }
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    assertSameOrigin(request); const user = await requirePermission('editActivities'); const id = (await context.params).id; await owned(id, user.id); const body = await readJson(request);
+    assertSameOrigin(request); const user = await requirePermission('editActivities'); const id = (await context.params).id; const current = await owned(id, user.id); const body = await readJson(request);
+    if (Object.keys(body).length === 1 && typeof body.title === 'string') {
+      const title = body.title.trim();
+      if (title.length < 3) throw new AppError(400, 'Le titre doit contenir au moins 3 caractères.', 'ACTIVITY_TITLE_REQUIRED');
+      if (title.length > 300) throw new AppError(400, 'Le titre ne peut pas dépasser 300 caractères.', 'ACTIVITY_TITLE_TOO_LONG');
+      const now = Math.floor(Date.now() / 1000);
+      await getDb().update(activities).set({ title, updatedAt: now }).where(and(eq(activities.id, id), eq(activities.trainerId, user.id)));
+      await audit(user.id, 'activity.renamed', 'activity', id, { previousTitle: current.title, title }, request);
+      return jsonOk({ message: 'Le cours ou jeu pédagogique a été renommé.' });
+    }
     if (body.status === 'published') assertPermission(user, 'publishActivities');
     const draft = body as unknown as ActivityDraft; const validation = validateActivityDraft(draft);
     if (!validation.valid) throw new AppError(400, validation.errors.join(' '), 'INVALID_ACTIVITY');

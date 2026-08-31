@@ -26,6 +26,7 @@ export async function PATCH(request:Request,context:{params:Promise<{id:string}>
     if ('status' in body) changes.status=normalizeTrainingStatus(body.status);
     let path=await ownedPath(id,user.id); const statements:unknown[]=[getDb().update(courseFolders).set(changes).where(and(eq(courseFolders.id,id),eq(courseFolders.trainerId,user.id)))];
     if (!path) { path={id:crypto.randomUUID(),trainerId:user.id,trainingId:id,name:`Parcours · ${changes.name??folder.name}`,status:'draft',createdAt:now,updatedAt:now}; statements.push(getDb().insert(learningPaths).values(path)); }
+    else if (changes.name) statements.push(getDb().update(learningPaths).set({name:`Parcours · ${changes.name}`,updatedAt:now}).where(and(eq(learningPaths.id,path.id),eq(learningPaths.trainerId,user.id))));
     const requestedItems='pathItems' in body ? normalizePathItemSettings(body.pathItems) : 'activityIds' in body ? normalizeFolderActivityIds(body.activityIds).map((activityId)=>({activityId,required:true,minScore:0,unlockAfterPrevious:true})) : null;
     if (requestedItems) {
       const activityIds=requestedItems.map((item)=>item.activityId); const ownedIds=activityIds.length ? await getDb().select({id:activities.id}).from(activities).where(and(eq(activities.trainerId,user.id),inArray(activities.id,activityIds))) : [];
