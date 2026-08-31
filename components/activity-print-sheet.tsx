@@ -84,6 +84,7 @@ export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }
     <section className="print-correction print-block print-page-start">
       <div className="print-teacher-label">Corrigé formateur · à séparer avant distribution</div>
       <div><span className="print-number">4</span><div><p className="print-kicker">Correction expliquée</p><h2>Réponses et points de vigilance</h2></div></div>
+      {!!coursePages.length&&<PrintCoursePracticeAnswers pages={coursePages}/>}
       <PrintableAnswers type={activity.type} content={activity.content} />
       {activity.correction && <div className="print-global-correction"><strong>Synthèse de la correction</strong><StructuredExplanation text={activity.correction} compact /></div>}
       <PrintCourseImages images={courseImages} placement="synthesis" />
@@ -91,6 +92,12 @@ export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }
     </section>
     <footer className="print-footer"><span>Progressed Pédago</span><span>{activity.title}</span></footer>
   </article>;
+}
+
+function PrintCoursePracticeAnswers({pages}:{pages:ReturnType<typeof coursePagesFromContent>}) {
+  const lessons=pages.slice(1).filter((page)=>page.practice.title||page.practice.question);
+  if(!lessons.length)return null;
+  return <section className="print-lesson-answers"><h3>Corrections des exercices de fin de leçon</h3>{lessons.map((page,index)=><article key={page.id}><span>Leçon {index+1}</span><h4>{page.title} — {page.practice.title}</h4><p><strong>Réponse attendue :</strong> {page.practice.answer||'Réponse à apprécier selon les critères de la leçon.'}</p>{page.practice.explanation&&<p>{page.practice.explanation}</p>}</article>)}</section>;
 }
 
 function PrintCourseImages({images,placement}:{images:CourseImage[];placement:CourseImagePlacement}) {

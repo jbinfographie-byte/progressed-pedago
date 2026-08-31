@@ -1,9 +1,21 @@
 export const COURSE_LENGTHS = ['short','intermediate','complete','custom'] as const;
 export const COURSE_PAGE_KINDS = ['cover','introduction','chapter','synthesis','exercises'] as const;
+export const COURSE_PRACTICE_TYPES = ['quiz','true-false','scenario','reflection'] as const;
 
 export type CourseLength = typeof COURSE_LENGTHS[number];
 export type CoursePageKind = typeof COURSE_PAGE_KINDS[number];
+export type CoursePracticeType = typeof COURSE_PRACTICE_TYPES[number];
 export type CoursePageSource = { documentId:string; pageNumber:number };
+export type CoursePractice = {
+  type:CoursePracticeType;
+  title:string;
+  instructions:string;
+  question:string;
+  choices:string[];
+  correctIndex:number;
+  answer:string;
+  explanation:string;
+};
 export type CoursePage = {
   id:string;
   title:string;
@@ -13,7 +25,7 @@ export type CoursePage = {
   definitions:Array<{term:string;definition:string}>;
   examples:Array<{title:string;description:string}>;
   keyPoints:string[];
-  practice:{title:string;instructions:string};
+  practice:CoursePractice;
   sourceRefs:CoursePageSource[];
 };
 
@@ -53,11 +65,19 @@ export function normalizeCoursePages(value:unknown):CoursePage[] {
       return {title:clean(example.title,240),description:clean(example.description,3_000)};
     }).filter((item)=>item.title&&item.description).slice(0,8):[];
     const practiceValue=page.practice&&typeof page.practice==='object'?page.practice as Record<string,unknown>:{};
+    const choices=list(practiceValue.choices,4);
+    const requestedPracticeType=clean(practiceValue.type,40);
+    const practiceType=COURSE_PRACTICE_TYPES.includes(requestedPracticeType as CoursePracticeType)?requestedPracticeType as CoursePracticeType:choices.length?'quiz':'reflection';
+    const rawCorrectIndex=Math.round(Number(practiceValue.correctIndex)||0);
+    const correctIndex=Math.min(Math.max(0,rawCorrectIndex),Math.max(0,choices.length-1));
+    const instructions=clean(practiceValue.instructions,3_000);
+    const question=clean(practiceValue.question,2_000)||instructions;
+    const answer=clean(practiceValue.answer,2_000)||choices[correctIndex]||'';
     const sourceRefs=Array.isArray(page.sourceRefs)?page.sourceRefs.flatMap((item)=>{
       const ref=item&&typeof item==='object'?item as Record<string,unknown>:{}; const documentId=clean(ref.documentId,80); const pageNumber=Number(ref.pageNumber);
       return documentId&&Number.isInteger(pageNumber)&&pageNumber>0?[{documentId,pageNumber}]:[];
     }).filter((item,index,items)=>items.findIndex((other)=>other.documentId===item.documentId&&other.pageNumber===item.pageNumber)===index).slice(0,300):[];
-    return {id,title:clean(page.title,300)||`Page ${index+1}`,kind,lead:clean(page.lead,3_000),sections,definitions,examples,keyPoints:list(page.keyPoints,20),practice:{title:clean(practiceValue.title,240),instructions:clean(practiceValue.instructions,3_000)},sourceRefs};
+    return {id,title:clean(page.title,300)||`Page ${index+1}`,kind,lead:clean(page.lead,3_000),sections,definitions,examples,keyPoints:list(page.keyPoints,20),practice:{type:practiceType,title:clean(practiceValue.title,240),instructions,question,choices,correctIndex,answer,explanation:clean(practiceValue.explanation,3_000)},sourceRefs};
   });
 }
 
@@ -67,7 +87,7 @@ export function coursePagesFromContent(content:unknown):CoursePage[] {
 }
 
 export function coursePageTextLength(page:CoursePage):number {
-  return [page.title,page.lead,...page.sections.flatMap((section)=>[section.heading,section.body]),...page.definitions.flatMap((definition)=>[definition.term,definition.definition]),...page.examples.flatMap((example)=>[example.title,example.description]),...page.keyPoints,page.practice.title,page.practice.instructions].join(' ').length;
+  return [page.title,page.lead,...page.sections.flatMap((section)=>[section.heading,section.body]),...page.definitions.flatMap((definition)=>[definition.term,definition.definition]),...page.examples.flatMap((example)=>[example.title,example.description]),...page.keyPoints,page.practice.title,page.practice.instructions,page.practice.question,...page.practice.choices,page.practice.answer,page.practice.explanation].join(' ').length;
 }
 
 function sourceKey(source:CoursePageSource):string {
@@ -147,6 +167,11 @@ export function validateCoursePages(pages:CoursePage[],target:number,lengthValue
   const chapterMinimum=Math.max(1,target-4);
   if(pages.filter((page)=>page.kind==='chapter').length<chapterMinimum)return `le cours doit contenir au moins ${chapterMinimum} chapitre(s).`;
   if(pages.filter((page)=>page.kind==='chapter').some((page)=>!page.sections.length))return 'chaque chapitre doit contenir des explications structurées.';
+  for(const page of pages.slice(1)) {
+    const practice=page.practice;
+    if(!practice.title||!practice.instructions||!practice.question||!practice.answer||!practice.explanation)return `la leçon « ${page.title} » doit se terminer par un exercice contextualisé avec sa réponse expliquée.`;
+    if((practice.type==='quiz'||practice.type==='true-false')&&(practice.choices.length<2||practice.correctIndex<0||practice.correctIndex>=practice.choices.length))return `l’exercice de la leçon « ${page.title} » doit proposer des choix cohérents et une bonne réponse.`;
+  }
   const length=normalizeCourseLength(lengthValue); const perPage=length==='complete'?1_200:length==='intermediate'||length==='custom'?900:650;
   if(pages.reduce((sum,page)=>sum+coursePageTextLength(page),0)<target*perPage)return 'le contenu des pages est encore trop proche d’un résumé.';
   const cited=new Set(pages.flatMap((page)=>page.sourceRefs.map((ref)=>`${ref.documentId}:${ref.pageNumber}`)));
@@ -163,7 +188,7 @@ export function coursePagesJsonSchema(pageCount:number) {
     definitions:{type:'array',items:{type:'object',additionalProperties:false,required:['term','definition'],properties:{term:text,definition:text}}},
     examples:{type:'array',items:{type:'object',additionalProperties:false,required:['title','description'],properties:{title:text,description:text}}},
     keyPoints:strings,
-    practice:{type:'object',additionalProperties:false,required:['title','instructions'],properties:{title:text,instructions:text}},
+    practice:{type:'object',additionalProperties:false,required:['type','title','instructions','question','choices','correctIndex','answer','explanation'],properties:{type:{type:'string',enum:COURSE_PRACTICE_TYPES},title:text,instructions:text,question:text,choices:strings,correctIndex:{type:'integer',minimum:0},answer:text,explanation:text}},
     sourceRefs:{type:'array',items:{type:'object',additionalProperties:false,required:['documentId','pageNumber'],properties:{documentId:text,pageNumber:{type:'integer',minimum:1}}}},
   }}} as const;
 }

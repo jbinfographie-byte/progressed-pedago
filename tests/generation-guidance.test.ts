@@ -51,4 +51,6 @@ test('le cours PDF exige un nombre exact de pages et couvre toutes les pages sou
   assert.match(prompt,/exactement 12 pages/);
   assert.match(prompt,/Chaque marqueur \[document:IDENTIFIANT\|page:NUMERO\]/);
   assert.match(prompt,/Ne produis jamais un simple résumé/);
+  assert.match(prompt,/chaque leçon à partir de l’introduction se termine obligatoirement par un exercice/);
+  assert.match(prompt,/quiz.*,.*true-false.*,.*scenario.*,.*reflection/);
 });
