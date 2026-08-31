@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { type ReactNode, useState } from 'react';
+import { type CSSProperties, type DragEvent, type ReactNode, useState } from 'react';
 import { ACTIVITY_TYPES, normalizeAnswer, type ActivityType } from '@/lib/activity-types';
 import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } from '@/components/activity-print-sheet';
 import { CourseImageManager } from '@/components/course-image-manager';
@@ -9,6 +9,7 @@ import { CourseReader } from '@/components/course-reader';
 import { COURSE_IMAGE_PLACEMENT_LABELS, courseImagesFromContent, type CourseImage, type CourseImagePlacement } from '@/lib/course-images';
 import { coursePagesFromContent } from '@/lib/course-pages';
 import { normalizeScenarioContent, type ScenarioChoice } from '@/lib/scenario';
+import { expectedItemsByTarget, normalizeDragDropContent, type DragDropItem, type DragDropTarget } from '@/lib/drag-drop';
 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
@@ -77,7 +78,8 @@ function Mechanic({ type, content,activity,journey }: { type: ActivityType; cont
   if (type === 'crossword') return <Crossword content={content} />;
   if (type === 'hangman') return <Hangman content={content} />;
   if (['spell-word','ranking','unravel','anagram'].includes(type)) return <Ordering content={content} letters={type === 'spell-word' || type === 'anagram'} />;
-  if (['drag-drop','matching','categories','labelled-diagram'].includes(type)) return <Classifier content={content} />;
+  if (type === 'drag-drop') return <DragDrop content={content} />;
+  if (['matching','categories','labelled-diagram'].includes(type)) return <Classifier content={content} />;
   if (type === 'type-answer') return <TypedAnswer content={content} />;
   if (type === 'maze') return <Maze content={content} />;
   if (type === 'scenario') return <Scenario content={content} activity={activity} journey={journey} />;
@@ -148,6 +150,104 @@ function Classifier({ content }: { content: Record<string, unknown> }) {
   const items = asItems(content.items); const categories = asItems(content.categories ?? content.zones); const [selected, setSelected] = useState<Item | null>(null); const [placements, setPlacements] = useState<Record<string,string[]>>({}); if (!items.length || !categories.length) return <EmptyMechanic />;
   const place = (category: Item) => { if (!selected) return; const key = label(category); setPlacements({ ...placements, [key]: [...(placements[key] ?? []), label(selected)] }); setSelected(null); };
   return <div className="classifier-board"><div><h3>Éléments</h3>{items.filter((item) => !Object.values(placements).flat().includes(label(item))).map((item,index) => <button type="button" className={selected === item ? 'selected' : ''} onClick={() => setSelected(item)} key={index}>{label(item)}</button>)}</div><div className="drop-zones">{categories.map((category,index) => <button type="button" onClick={() => place(category)} key={index}><strong>{label(category)}</strong><span>{(placements[label(category)] ?? []).join(' · ') || 'Déposer ici'}</span></button>)}</div></div>;
+}
+
+function DragDrop({ content }: { content: Record<string, unknown> }) {
+  const game = normalizeDragDropContent(content);
+  const expected = expectedItemsByTarget(game);
+  const [bankOrder] = useState(() => stableDragDropOrder(game.items));
+  const [selectedId,setSelectedId] = useState('');
+  const [placements,setPlacements] = useState<Record<string,string[]>>({});
+  const [checked,setChecked] = useState(false);
+  const [showAnswers,setShowAnswers] = useState(false);
+  if (!game.items.length || !game.targets.length) return <EmptyMechanic />;
+
+  const placedIds = new Set(Object.values(placements).flat());
+  const placedCount = placedIds.size;
+  const score = game.items.filter((item) => Object.entries(placements).some(([targetId,itemIds]) => targetId === item.targetId && itemIds.includes(item.id))).length;
+  const targetCorrect = (target: DragDropTarget) => {
+    const actual = placements[target.id] ?? [];
+    const answer = (expected[target.id] ?? []).map((item) => item.id);
+    return actual.length === answer.length && actual.every((id) => answer.includes(id));
+  };
+  const clearFeedback = () => { setChecked(false); setShowAnswers(false); };
+  const removeFromPlacements = (itemId: string, source = placements) => Object.fromEntries(Object.entries(source).map(([targetId,itemIds]) => [targetId,itemIds.filter((id) => id !== itemId)]));
+  const place = (targetId: string, itemId = selectedId) => {
+    if (!itemId || !game.items.some((item) => item.id === itemId)) return;
+    const withoutItem = removeFromPlacements(itemId);
+    const capacityOne = game.mode !== 'categories';
+    setPlacements({ ...withoutItem,[targetId]:capacityOne ? [itemId] : [...(withoutItem[targetId] ?? []),itemId] });
+    setSelectedId(''); clearFeedback();
+  };
+  const returnToBank = (itemId: string) => {
+    setPlacements(removeFromPlacements(itemId)); setSelectedId(itemId); clearFeedback();
+  };
+  const onDrop = (event: DragEvent<HTMLElement>, targetId: string) => {
+    event.preventDefault();
+    place(targetId,event.dataTransfer.getData('text/plain') || selectedId);
+  };
+  const revealAnswers = () => {
+    setPlacements(Object.fromEntries(game.targets.map((target) => [target.id,(expected[target.id] ?? []).map((item) => item.id)])));
+    setSelectedId(''); setChecked(true); setShowAnswers(true);
+  };
+  const reset = () => { setPlacements({}); setSelectedId(''); setChecked(false); setShowAnswers(false); };
+  const modeLabel = game.mode === 'visual' ? 'Association visuelle' : game.mode === 'association' ? 'Étiquettes et définitions' : 'Classement par zones';
+  const hasHotspots = game.mode === 'visual' && Boolean(game.imageUrl) && game.targets.some((target) => target.x !== undefined && target.y !== undefined);
+
+  const token = (item: DragDropItem, assigned = false) => {
+    const index = game.items.findIndex((candidate) => candidate.id === item.id);
+    const correct = checked && item.targetId && Object.entries(placements).some(([targetId,itemIds]) => itemIds.includes(item.id) && targetId === item.targetId);
+    const wrong = checked && !correct;
+    return <button
+      type="button"
+      draggable={!checked || showAnswers}
+      className={`drag-token tone-${index % 5}${selectedId === item.id ? ' selected' : ''}${assigned ? ' assigned' : ''}${correct ? ' correct' : ''}${wrong ? ' wrong' : ''}`}
+      aria-pressed={selectedId === item.id}
+      onClick={(event) => { event.stopPropagation(); if (assigned) returnToBank(item.id); else setSelectedId((current) => current === item.id ? '' : item.id); }}
+      onDragStart={(event) => { event.dataTransfer.setData('text/plain',item.id); event.dataTransfer.effectAllowed = 'move'; setSelectedId(item.id); }}
+      key={item.id}
+    >{item.imageUrl && <img src={item.imageUrl} alt="" />}<span>{item.label}</span><i aria-hidden="true">⠿</i></button>;
+  };
+
+  const target = (dropTarget: DragDropTarget,index: number, hotspot = false) => {
+    const assignedItems = (placements[dropTarget.id] ?? []).map((id) => game.items.find((item) => item.id === id)).filter((item): item is DragDropItem => Boolean(item));
+    const correctItems = expected[dropTarget.id] ?? [];
+    const isCorrect = checked && targetCorrect(dropTarget);
+    const isWrong = checked && !isCorrect;
+    const style: CSSProperties | undefined = hotspot ? { left:`${dropTarget.x ?? 50}%`,top:`${dropTarget.y ?? 50}%` } : undefined;
+    return <section
+      className={`drag-target${hotspot ? ' hotspot' : ''}${selectedId ? ' ready' : ''}${isCorrect ? ' correct' : ''}${isWrong ? ' wrong' : ''}`}
+      style={style}
+      role="button"
+      tabIndex={0}
+      aria-label={`Déposer dans ${dropTarget.label}`}
+      onClick={() => place(dropTarget.id)}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); place(dropTarget.id); } }}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+      onDrop={(event) => onDrop(event,dropTarget.id)}
+      key={dropTarget.id}
+    >
+      {dropTarget.imageUrl && <img className="drag-target-image" src={dropTarget.imageUrl} alt="" />}
+      <div className="drag-target-copy"><span>{hotspot ? index + 1 : game.mode === 'categories' ? 'Zone' : 'Association'}</span><strong>{dropTarget.label || `Zone ${index + 1}`}</strong>{dropTarget.description && <p>{dropTarget.description}</p>}</div>
+      <div className="drag-slot">{assignedItems.length ? assignedItems.map((item) => token(item,true)) : <span><b>＋</b>{selectedId ? 'Touchez pour déposer' : 'Déposez une étiquette ici'}</span>}</div>
+      {checked && <small className="drag-target-feedback">{isCorrect ? '✓ Bonne association' : `Réponse attendue : ${correctItems.map((item) => item.label).join(' · ') || 'aucune étiquette'}`}{!isCorrect && correctItems[0]?.explanation ? ` — ${correctItems[0].explanation}` : ''}</small>}
+    </section>;
+  };
+
+  return <div className={`drag-drop-board mode-${game.mode}`}>
+    <header className="drag-drop-heading"><div><span>{modeLabel}</span><h3>{game.instruction || (game.mode === 'visual' ? 'Associez chaque étiquette au bon visuel.' : 'Associez chaque étiquette à la bonne réponse.')}</h3><p>Faites glisser une étiquette ou touchez-la, puis touchez sa zone de destination.</p></div><div className="drag-progress" aria-label={`${placedCount} réponses placées sur ${game.items.length}`}><strong>{placedCount}/{game.items.length}</strong><span><i style={{width:`${placedCount / game.items.length * 100}%`}} /></span></div></header>
+    <section className="drag-bank" aria-label="Étiquettes à placer"><div><strong>Étiquettes</strong><small>{selectedId ? 'Étiquette sélectionnée : choisissez maintenant une zone.' : 'Glissez ou touchez une réponse.'}</small></div><div>{bankOrder.filter((item) => !placedIds.has(item.id)).map((item) => token(item))}{placedCount === game.items.length && <p className="drag-bank-empty">Toutes les étiquettes sont placées. Vous pouvez vérifier vos réponses.</p>}</div></section>
+    {hasHotspots ? <div className="drag-visual-canvas"><img src={game.imageUrl} alt="Support visuel de l’exercice" />{game.targets.map((item,index) => target(item,index,true))}</div> : <div className={game.mode === 'visual' ? 'drag-visual-grid' : 'drag-target-list'}>{game.targets.map((item,index) => target(item,index))}</div>}
+    <footer className="drag-drop-actions"><button className="button dark" type="button" disabled={placedCount !== game.items.length || checked} onClick={() => setChecked(true)}>Vérifier mes réponses</button>{checked && <><button className="button light" type="button" onClick={reset}>Réessayer</button>{!showAnswers && <button className="button light" type="button" onClick={revealAnswers}>Voir les réponses</button>}</>}<span aria-live="polite">{checked ? showAnswers ? 'Correction affichée.' : score === game.items.length ? `Bravo, ${score} réponse${score > 1 ? 's' : ''} correcte${score > 1 ? 's' : ''} sur ${game.items.length}.` : `${score} réponse${score > 1 ? 's' : ''} correcte${score > 1 ? 's' : ''} sur ${game.items.length}. Consultez les explications puis réessayez.` : `${game.items.length - placedCount} étiquette${game.items.length - placedCount > 1 ? 's' : ''} à placer.`}</span></footer>
+  </div>;
+}
+
+function stableDragDropOrder(items: DragDropItem[]): DragDropItem[] {
+  return [...items].sort((first,second) => dragDropHash(second.id) - dragDropHash(first.id));
+}
+
+function dragDropHash(value: string): number {
+  return [...value].reduce((total,character) => ((total * 31) + character.charCodeAt(0)) >>> 0,2166136261);
 }
 
 function TypedAnswer({ content }: { content: Record<string, unknown> }) {

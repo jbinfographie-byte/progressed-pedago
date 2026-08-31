@@ -4,6 +4,7 @@ import { normalizeScenarioContent } from '@/lib/scenario';
 import { courseImagesFromContent, type CourseImage, type CourseImagePlacement } from '@/lib/course-images';
 import { coursePagesFromContent } from '@/lib/course-pages';
 import { CoursePageContent } from '@/components/course-reader';
+import { expectedItemsByTarget, normalizeDragDropContent } from '@/lib/drag-drop';
 
 export type PrintableActivity = {
   type: ActivityType;
@@ -125,7 +126,11 @@ function PrintableMechanic({ type,content }: { type: ActivityType; content: Reco
     const values = items(content.items).map(itemLabel);
     return <div className="print-ordering">{(values.length ? values : String(content.word ?? content.sentence ?? '').split(' ')).map((value,index) => <p key={index}><i>{index + 1}</i><span>{value}</span><b>Ordre : ____</b></p>)}</div>;
   }
-  if (['drag-drop','matching','categories','labelled-diagram'].includes(type)) {
+  if (type === 'drag-drop') {
+    const game = normalizeDragDropContent(content);
+    return <><div className="print-item-bank"><strong>Étiquettes à placer</strong><p>{game.items.map((item) => item.label).join(' · ')}</p></div>{game.imageUrl && <div className="print-image-activity"><img src={game.imageUrl} alt="Support visuel de l’exercice" /></div>}<div className="print-category-grid">{game.targets.map((target,index) => <section className="print-drag-answer" key={target.id}>{target.imageUrl && <img className="print-drag-target-image" src={target.imageUrl} alt="" />}<div><h3>{target.description || target.label || `Zone ${index + 1}`}</h3>{target.description && target.label && <p>{target.label}</p>}<div /></div></section>)}</div></>;
+  }
+  if (['matching','categories','labelled-diagram'].includes(type)) {
     const categories = items(content.categories ?? content.zones);
     return <><div className="print-item-bank"><strong>Éléments à classer</strong><p>{items(content.items).map(itemLabel).join(' · ')}</p></div><div className="print-category-grid">{categories.map((category,index) => <section key={index}><h3>{itemLabel(category)}</h3><div /></section>)}</div></>;
   }
@@ -161,6 +166,11 @@ function PrintableAnswers({ type,content }: { type: ActivityType; content: Recor
   if (type === 'scenario') {
     const scenario = normalizeScenarioContent(content);
     return <div className="print-answer-list print-scenario-answers">{scenario.scenes.map((scene,index) => <section key={scene.id}><h3>{index + 1}. {scene.title}</h3><p><strong>Objectif :</strong> {scene.objective}</p>{scene.choices.map((choice,choiceIndex) => <div className={`print-scenario-answer score-${choice.score}`} key={choice.id}><p><strong>{String.fromCharCode(65 + choiceIndex)} · {choice.score}/2 — {choice.text}</strong></p><p><b>Conséquence :</b> {choice.consequence}</p><p><b>Conduite recommandée :</b> {choice.recommendedConduct}</p><p>{choice.explanation}</p></div>)}</section>)}<section className="print-scenario-debrief"><h3>{scenario.debrief.title}</h3><p>{scenario.debrief.summary}</p><strong>Bonnes pratiques</strong><ul>{scenario.debrief.bestPractices.map((item) => <li key={item}>{item}</li>)}</ul><strong>Questions de débrief</strong><ul>{scenario.debrief.trainerQuestions.map((item) => <li key={item}>{item}</li>)}</ul></section></div>;
+  }
+  if (type === 'drag-drop') {
+    const game = normalizeDragDropContent(content);
+    const expected = expectedItemsByTarget(game);
+    return <div className="print-answer-list">{game.targets.map((target,index) => <section key={target.id}><h3>{index + 1}. {target.description || target.label}</h3><p className="print-answer"><strong>Réponse :</strong> {(expected[target.id] ?? []).map((item) => item.label).join(' · ') || 'Aucune étiquette'}</p>{(expected[target.id] ?? []).map((item) => item.explanation).filter(Boolean).map((explanation,explanationIndex) => <p key={explanationIndex}>{explanation}</p>)}</section>)}</div>;
   }
   const answers = items(content.items).filter((item) => item.answer || item.category || item.correct);
   return answers.length ? <div className="print-answer-list">{answers.map((answer,index) => <section key={index}><h3>{index + 1}. {itemLabel(answer)}</h3><p>{String(answer.answer ?? answer.category ?? (answer.correct ? 'Correct' : ''))}</p></section>)}</div> : <p className="print-adaptation-note">Utilisez la synthèse ci-dessous pour animer la correction collective et demander aux participants de justifier leurs choix.</p>;

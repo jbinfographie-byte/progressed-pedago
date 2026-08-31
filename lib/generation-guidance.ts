@@ -56,7 +56,8 @@ ${scenarioInstruction}
 Exigences pour les mécaniques :
 - quiz et tv-quiz : 5 à 10 questions dans questions, 3 ou 4 choices plausibles, correctIndex varié, explanation détaillée pour chaque question ;
 - true-false : 6 à 10 statements avec answer et explanation ;
-- drag-drop, matching, categories et labelled-diagram : items munis de label et category, et categories ou zones clairement nommées ;
+- drag-drop : crée un jeu réellement jouable selon l’un de ces deux modèles. Modèle association : content contient mode:"association", une liste items[{id,label,category,explanation}] et autant de categories[{id,label,description}] ; category référence exactement l’id de la bonne définition. Modèle visuel : content contient mode:"visual", items[{id,label,category,explanation}] et zones[{id,label,description,imageUrl facultatif,x facultatif,y facultatif}] ; category référence exactement l’id du bon visuel. Utilise des étiquettes courtes, des définitions ou visuels sans ambiguïté, 4 à 8 associations et une explication pédagogique par réponse. Si une image de fond fiable est disponible, place son URL HTTPS dans imageUrl et donne aux zones des coordonnées x/y en pourcentage ; sinon, fournis une imageUrl HTTPS par zone ou utilise le modèle association. N’invente jamais une URL d’image ;
+- matching, categories et labelled-diagram : items munis de label et category, et categories ou zones clairement nommées ;
 - word-search : grid rectangulaire lisible et words réellement présents dans la grille ; crossword : grid et clues cohérents ; hangman : words pertinents ;
 - flip-tiles, revision-cards, random-cards, memory-cards et pair-or-not : cards avec front, back et pair lorsque nécessaire ;
 - spell-word, ranking, unravel et anagram : items ordonnables, et word ou sentence si utile ;

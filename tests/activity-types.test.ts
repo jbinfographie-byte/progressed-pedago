@@ -18,6 +18,7 @@ function validContent(type: ActivityType): Record<string, unknown> {
   if (type === 'categories') return { categories: [{ label: 'A' },{ label: 'B' }], items: [{ label: '1' },{ label: '2' }] };
   if (type === 'maze') return { cells: [{},{},{},{}] };
   if (type === 'flying-fruits') return { prompts: [{ question: 'Q' }] };
+  if (type === 'drag-drop') return { mode:'association',categories:[{ id:'a',label:'A' },{ id:'b',label:'B' }],items:[{ label:'1',category:'a' },{ label:'2',category:'b' }] };
   return { items: [{ label: 'A' },{ label: 'B' }] };
 }
 

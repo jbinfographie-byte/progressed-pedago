@@ -52,7 +52,7 @@ export function validateMechanic(type: ActivityType, content: Record<string, unk
     case 'flip-tiles': case 'revision-cards': case 'random-cards': case 'memory-cards': case 'pair-or-not': requireItems('cards'); break;
     case 'type-answer': requireItems('prompts'); break; case 'interactive-image': if (!text(content.imageUrl)) errors.push('Une image est obligatoire.'); requireItems('hotspots'); break;
     case 'scenario': if (Array.isArray(content.scenes)) errors.push(...validateScenarioContent(content)); else requireItems('steps'); break; case 'live-poll': if (!text(content.question)) errors.push('La question du sondage est obligatoire.'); requireItems('options', 2); break;
-    case 'challenge-wheel': case 'question-wheel': requireItems('sectors', 2); break; case 'categories': requireItems('categories', 2); requireItems('items', 2); break;
+    case 'challenge-wheel': case 'question-wheel': requireItems('sectors', 2); break; case 'drag-drop': requireItems('items', 2); if (list(content.zones).length < 2 && list(content.categories).length < 2) errors.push('La mécanique « drag-drop » nécessite au moins 2 zones ou catégories.'); break; case 'categories': requireItems('categories', 2); requireItems('items', 2); break;
     case 'maze': requireItems('cells', 4); break; case 'flying-fruits': requireItems('prompts'); break; default: requireItems('items', 2);
   }
   return errors;

@@ -387,6 +387,86 @@ button.format-card { border: 0; color: var(--ink); text-align: left; }
 .application-card { display: grid; align-content: start; gap: 15px; min-width: 0; border: 1px solid var(--line); border-radius: 22px; padding: 22px; background: white; box-shadow: 0 12px 35px rgba(11,59,51,.06); }
 .application-logo { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 15px; color: white; background: #16894d; font-size: 1.55rem; font-weight: 900; }
 .application-logo.microsoft { background: #2563a8; }.application-logo.google { color: #2d5d4f; background: #e8f2ff; }.application-logo.canva { background: linear-gradient(135deg,#00c4cc,#7d2ae8); }.application-logo.generic { color: var(--deep-2); background: var(--mint); }
+
+/* Glisser-déposer pédagogique */
+.drag-drop-board { display: grid; gap: 18px; color: var(--ink); }
+.drag-drop-heading { display: grid; grid-template-columns: minmax(0,1fr) 130px; gap: 20px; align-items: center; border-radius: 18px; padding: 18px 20px; background: linear-gradient(120deg,#edf8f3,#f4f9df); }
+.drag-drop-heading > div:first-child { display: grid; gap: 5px; }
+.drag-drop-heading > div:first-child > span { color: #367565; font-size: .68rem; font-weight: 950; letter-spacing: .12em; text-transform: uppercase; }
+.drag-drop-heading h3,.drag-drop-heading p { margin: 0; }
+.drag-drop-heading h3 { font-family: var(--font-serif),serif; font-size: 1.45rem; }
+.drag-drop-heading p { color: var(--muted); font-size: .78rem; }
+.drag-progress { display: grid; gap: 7px; text-align: right; }
+.drag-progress strong { font-size: 1.15rem; }
+.drag-progress > span { overflow: hidden; width: 100%; height: 8px; border-radius: 999px; background: #cfdfd7; }
+.drag-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--green),#cfe937); transition: width .25s ease; }
+.drag-bank { display: grid; grid-template-columns: 160px minmax(0,1fr); gap: 14px; align-items: start; border: 1px solid #c9d9d2; border-radius: 18px; padding: 16px; background: #fbfdfb; }
+.drag-bank > div:first-child { display: grid; gap: 4px; padding: 8px 4px; }
+.drag-bank > div:first-child small { color: var(--muted); line-height: 1.4; }
+.drag-bank > div:last-child { min-height: 58px; display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.drag-token { --token:#2f8b66; display: inline-grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 9px; align-items: center; max-width: 100%; border: 0; border-bottom: 4px solid color-mix(in srgb,var(--token) 76%,#163c32); border-radius: 12px; padding: 10px 12px; color: white; background: var(--token); font: inherit; font-size: .8rem; font-weight: 850; text-align: left; cursor: grab; box-shadow: 0 5px 12px color-mix(in srgb,var(--token) 24%,transparent); touch-action: manipulation; transition: transform .15s ease,box-shadow .15s ease,outline-color .15s ease; }
+.drag-token:hover,.drag-token:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 16px color-mix(in srgb,var(--token) 30%,transparent); }
+.drag-token:active { cursor: grabbing; transform: scale(.98); }
+.drag-token.selected { outline: 4px solid #dff44c; outline-offset: 2px; }
+.drag-token.assigned { width: 100%; cursor: pointer; }
+.drag-token.correct { --token:#238254; }
+.drag-token.wrong { --token:#c9584a; }
+.drag-token.tone-1 { --token:#2e82ba; }.drag-token.tone-2 { --token:#d45c35; }.drag-token.tone-3 { --token:#8154c8; }.drag-token.tone-4 { --token:#d58a17; }
+.drag-token img { width: 34px; height: 34px; border-radius: 7px; object-fit: contain; background: white; }
+.drag-token i { color: rgba(255,255,255,.78); font-style: normal; font-size: 1rem; }
+.drag-bank-empty { margin: 8px; color: #3c6b5e; font-size: .8rem; font-weight: 750; }
+.drag-target-list { display: grid; gap: 11px; }
+.drag-visual-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 13px; }
+.drag-target { min-width: 0; display: grid; grid-template-columns: minmax(220px,1.3fr) minmax(190px,.7fr); gap: 14px; align-items: center; border: 2px dashed #a9c2b7; border-radius: 17px; padding: 14px; background: white; cursor: pointer; transition: border-color .15s ease,background .15s ease,transform .15s ease; }
+.drag-target:hover,.drag-target.ready { border-color: #4d927d; background: #f5fbf7; }
+.drag-target.ready:hover { transform: translateY(-1px); background: #eef9f2; }
+.drag-target.correct { border-style: solid; border-color: #4c9b73; background: #edf9f2; }
+.drag-target.wrong { border-style: solid; border-color: #d77769; background: #fff3f0; }
+.drag-target-copy { min-width: 0; display: grid; gap: 4px; }
+.drag-target-copy > span { color: #628077; font-size: .62rem; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.drag-target-copy strong { font-size: .94rem; }
+.drag-target-copy p { margin: 0; color: #405f56; line-height: 1.48; }
+.drag-target-image { width: 100%; max-height: 155px; grid-column: 1 / -1; border-radius: 12px; object-fit: contain; background: #f4f7f5; }
+.drag-slot { min-height: 62px; display: grid; align-items: center; border: 1px solid #cddbd5; border-radius: 12px; padding: 8px; background: #f7faf8; }
+.drag-slot > span { display: flex; gap: 8px; align-items: center; justify-content: center; color: #789087; font-size: .75rem; font-weight: 750; text-align: center; }
+.drag-slot > span b { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 999px; color: white; background: #8bb5a6; }
+.drag-target-feedback { grid-column: 1 / -1; border-radius: 9px; padding: 9px 11px; color: #46675e; background: rgba(255,255,255,.78); font-weight: 750; line-height: 1.45; }
+.drag-visual-canvas { position: relative; overflow: hidden; min-height: 430px; border: 1px solid #c5d6ce; border-radius: 20px; background: #eef4f0; }
+.drag-visual-canvas > img { display: block; width: 100%; height: auto; min-height: 430px; object-fit: contain; }
+.drag-target.hotspot { position: absolute; width: clamp(145px,24%,245px); min-width: 0; grid-template-columns: 1fr; gap: 7px; padding: 9px; transform: translate(-50%,-50%); background: rgba(255,255,255,.94); box-shadow: 0 8px 25px rgba(13,58,49,.16); }
+.drag-target.hotspot:hover { transform: translate(-50%,-52%); }
+.drag-target.hotspot .drag-target-copy { grid-template-columns: auto 1fr; align-items: center; }
+.drag-target.hotspot .drag-target-copy > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; color: white; background: var(--green); }
+.drag-target.hotspot .drag-target-copy p,.drag-target.hotspot .drag-target-image { display: none; }
+.drag-target.hotspot .drag-slot { min-height: 45px; padding: 5px; }
+.drag-target.hotspot .drag-token { padding: 7px 8px; font-size: .7rem; }
+.drag-drop-actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; border-top: 1px solid #d8e3de; padding-top: 16px; }
+.drag-drop-actions > span { flex: 1 1 260px; color: #4b6b62; font-size: .8rem; font-weight: 750; text-align: right; }
+.print-image-activity > img { display: block; width: 100%; max-height: 90mm; margin-bottom: 4mm; border: 1px solid #cbdcd5; border-radius: 4mm; object-fit: contain; }
+.print-drag-target-image { width: 35mm; height: 25mm; object-fit: contain; }
+.print-drag-answer { display: grid; grid-template-columns: 38mm minmax(0,1fr); gap: 5mm; align-items: center; }
+
+@media (max-width: 800px) {
+  .drag-drop-heading,.drag-bank,.drag-target { grid-template-columns: 1fr; }
+  .drag-progress { text-align: left; }
+  .drag-bank > div:first-child { padding: 0; }
+  .drag-visual-grid { grid-template-columns: 1fr; }
+  .drag-target-feedback { grid-column: auto; }
+  .drag-drop-actions > .button { flex: 1 1 180px; }
+  .drag-drop-actions > span { flex-basis: 100%; text-align: left; }
+  .drag-visual-canvas { min-height: 520px; overflow: auto; }
+  .drag-target.hotspot { width: 190px; }
+}
+
+@media (max-width: 520px) {
+  .drag-drop-heading,.drag-bank,.drag-target { padding: 12px; border-radius: 14px; }
+  .drag-token { width: 100%; }
+  .drag-bank > div:last-child { display: grid; }
+  .drag-visual-canvas { min-height: 560px; }
+  .drag-target.hotspot { position: relative; inset: auto !important; width: auto; margin: 10px; transform: none; }
+  .drag-target.hotspot:hover { transform: none; }
+  .drag-visual-canvas > img { min-height: 0; }
+}
 .application-card-title { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
 .application-card h3 { margin: 0; font: 700 1.35rem/1.1 var(--font-serif),serif; }.application-card p { margin: 6px 0 0; color: var(--muted); line-height: 1.45; }
 .application-card-title > span { flex: 0 0 auto; border-radius: 999px; padding: 6px 9px; font-size: .67rem; font-weight: 900; text-transform: uppercase; }.application-card-title .connected { color: #1c6b54; background: #def4e9; }.application-card-title .ready { color: #1d4f91; background: #e5eefb; }.application-card-title .configure { color: #855e16; background: #fff0c7; }.application-card-title .link { color: #24594d; background: #e8f4ef; }
