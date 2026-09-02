@@ -1,4 +1,5 @@
 import type { ActivityType } from './activity-types.ts';
+import { normalizeExternalGameContent } from './external-games.ts';
 
 type QuizQuestion = { question?: unknown; choices?: unknown; correctIndex?: unknown; explanation?: unknown };
 type TrueFalseStatement = { text?: unknown; answer?: unknown; explanation?: unknown };
@@ -9,6 +10,7 @@ type Target = { id?: unknown; label?: unknown; description?: unknown; definition
 type LabelledItem = { label?: unknown; text?: unknown };
 
 export function buildManualPedagogy(type: ActivityType, title: string, objectives: string[], content: Record<string, unknown>) {
+  if (type === 'external-game') return buildExternalGamePedagogy(title,objectives,content);
   const points = extractTeachingPoints(type, content);
   const usefulPoints = points.length ? points : objectives.map((objective) => String(objective).trim()).filter(Boolean);
   const lessonPoints = usefulPoints.length ? usefulPoints : [`Identifier les éléments essentiels de « ${title} » et les appliquer dans une situation professionnelle.`];
@@ -45,6 +47,25 @@ ${(correctionLines.length ? correctionLines : lessonPoints).map((line) => `- ${l
 En cas d’erreur, faire relire la consigne, demander au participant d’expliquer son raisonnement, puis revenir au point correspondant du mini-cours avant une nouvelle tentative.`;
 
   return { explanation, correction };
+}
+
+function buildExternalGamePedagogy(title:string,objectives:string[],content:Record<string,unknown>) {
+  const game=normalizeExternalGameContent(content);
+  const explanation=[
+    '## Introduction',game.introduction||`Cette activité externe permet de travailler « ${title} » de manière interactive.`,
+    '## Avant de commencer',game.preGameExplanation||'Relisez les objectifs et prenez le temps d’observer chaque consigne avant de répondre.',
+    '## Objectifs',...(objectives.length?objectives:['Comprendre la notion principale et savoir la mobiliser dans une situation professionnelle.']).map((item)=>`- ${item}`),
+    '## Conseils',...(game.learnerTips.length?game.learnerTips:['Lisez entièrement chaque proposition.','Justifiez mentalement votre choix.','Revenez au cours en cas d’hésitation.']).map((item)=>`- ${item}`),
+  ].join('\n');
+  const correctionText=text(content.aiCorrection);
+  const answers=game.paper.questions.filter((item)=>item.answer).map((item,index)=>`- ${index+1}. ${item.question} — ${item.answer}`);
+  const correction=[
+    '## Débriefing',game.debrief||'Comparez les stratégies utilisées, identifiez les erreurs récurrentes et reformulez collectivement les règles importantes.',
+    answers.length?'## Réponses de la version papier':'',...answers,
+    correctionText?'## Explications complémentaires':'',correctionText,
+    '## Validation','Le site externe ne transmet pas nécessairement de score. La réussite est donc validée manuellement, ou à partir du score déclaré par l’apprenant lorsque cette option est activée.',
+  ].filter(Boolean).join('\n');
+  return {explanation,correction};
 }
 
 function extractTeachingPoints(type: ActivityType, content: Record<string, unknown>): string[] {

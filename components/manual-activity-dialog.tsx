@@ -1,16 +1,17 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { type ChangeEvent, FormEvent, useState } from 'react';
 import { ACTIVITY_TYPES, MANUAL_ACTIVITY_TYPES, isManualActivityType, type ActivityDraft, type ActivityType } from '@/lib/activity-types';
 import { buildManualPedagogy } from '@/lib/manual-pedagogy';
 import { SCENARIO_EXAMPLE_CONTENT, type ScenarioContent, type ScenarioScene } from '@/lib/scenario';
+import { DEFAULT_EXTERNAL_GAME_CONTENT, extractExternalGameUrl, normalizeExternalGameContent, providerFromExternalGameUrl } from '@/lib/external-games';
 
 type Question = { question: string; choices: string[]; correctIndex: number; explanation: string };
 type ContentRow = Record<string,unknown>;
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { message: string } };
 type EditableActivity = ActivityDraft & { id: string; status: 'draft' | 'published' };
 
-const manualSymbols: Partial<Record<ActivityType,string>> = { quiz:'?', 'drag-drop':'↕', 'true-false':'✓',scenario:'➜',matching:'⇄',ranking:'≡','revision-cards':'▤','type-answer':'⌨','question-wheel':'✺','live-poll':'◔' };
+const manualSymbols: Partial<Record<ActivityType,string>> = { quiz:'?', 'drag-drop':'↕', 'true-false':'✓',scenario:'➜',matching:'⇄',ranking:'≡','revision-cards':'▤','type-answer':'⌨','question-wheel':'✺','live-poll':'◔','external-game':'⌁' };
 
 export function ManualActivityDialog({ type,initial,onClose,onCreated }: { type: ActivityType; initial?: EditableActivity | null; onClose: () => void; onCreated: () => void }) {
   const [activityType,setActivityType] = useState<ActivityType>(type);
@@ -100,7 +101,54 @@ function GuidedActivityEditor({ type,value,onChange }: { type:ActivityType;value
   if (type === 'type-answer') return <TypedPromptsEditor value={value} onChange={onChange} />;
   if (type === 'question-wheel') return <QuestionWheelEditor value={value} onChange={onChange} />;
   if (type === 'live-poll') return <LivePollEditor value={value} onChange={onChange} />;
+  if (type === 'external-game') return <ExternalGameEditor value={value} onChange={onChange} />;
   return null;
+}
+
+function ExternalGameEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
+  const game = normalizeExternalGameContent(value);
+  const [rawInput,setRawInput] = useState(game.embedUrl);
+  const [inputMode,setInputMode] = useState<'iframe'|'link'>(game.embedUrl ? 'link' : 'iframe');
+  const [inputError,setInputError] = useState('');
+  const [aiBusy,setAiBusy] = useState(false);
+  const [uploadBusy,setUploadBusy] = useState(false);
+  const [aiMessage,setAiMessage] = useState('');
+  const update = (patch:Partial<typeof game>) => onChange({...game,...patch});
+  const updatePaper = (patch:Partial<typeof game.paper>) => update({paper:{...game.paper,...patch}});
+  const acceptInput = (next:string) => {
+    setRawInput(next); const url = extractExternalGameUrl(next);
+    if (!next.trim()) { setInputError(''); update({embedUrl:''}); return; }
+    if (!url) { setInputError('Seuls un lien HTTPS public ou un iframe contenant une adresse HTTPS sont acceptés. Les scripts et attributs fournis ne sont jamais conservés.'); update({embedUrl:''}); return; }
+    setInputError(''); update({embedUrl:url,provider:providerFromExternalGameUrl(url)});
+  };
+  const enrich = async () => {
+    setAiBusy(true);setAiMessage('');
+    try {
+      const response=await fetch('/api/external-games/enrich',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({embedUrl:game.embedUrl,description:game.gameDescription})});
+      const payload=await response.json() as {ok?:boolean;data?:{enrichment?:{introduction:string;preGameExplanation:string;learnerTips:string[];debrief:string;correction:string;questions:Array<{question:string;answer:string}>}};error?:{message?:string}};
+      if(!response.ok||!payload.ok||!payload.data?.enrichment)throw new Error(payload.error?.message||'Génération impossible.');
+      const result=payload.data.enrichment;
+      onChange({...game,introduction:result.introduction,preGameExplanation:result.preGameExplanation,learnerTips:result.learnerTips,debrief:result.debrief,aiCorrection:result.correction,paper:{...game.paper,questions:result.questions}});
+      setAiMessage('Les explications et la fiche papier ont été préparées. Relisez-les avant l’enregistrement.');
+    } catch(reason) { setAiMessage(reason instanceof Error ? reason.message : 'Génération impossible.'); }
+    finally { setAiBusy(false); }
+  };
+  const uploadOfficialFile=async(event:ChangeEvent<HTMLInputElement>)=>{const file=event.target.files?.[0];if(!file)return;setUploadBusy(true);setAiMessage('');try{const form=new FormData();form.append('files',file);const response=await fetch('/api/files',{method:'POST',body:form});const payload=await response.json() as {ok?:boolean;data?:{files?:Array<{id:string;name:string}>};error?:{message?:string}};const saved=payload.data?.files?.[0];if(!response.ok||!payload.ok||!saved)throw new Error(payload.error?.message||'Import impossible.');updatePaper({officialFileId:saved.id,officialFileName:saved.name});setAiMessage('Le support d’impression officiel a été importé et associé au jeu.');}catch(reason){setAiMessage(reason instanceof Error?reason.message:'Import impossible.');}finally{setUploadBusy(false);event.target.value='';}};
+  const questions=game.paper.questions;
+  return <div className="external-game-editor">
+    <div className="external-game-security"><span>⌁</span><p><strong>Intégration sécurisée</strong>Le code iframe est nettoyé : seule son adresse HTTPS est conservée. Les scripts, événements et attributs dangereux sont bloqués.</p></div>
+    <div className="editor-mode-switch"><button className={inputMode==='iframe'?'active':''} type="button" onClick={()=>setInputMode('iframe')}><span>&lt;/&gt;</span><b>Code iframe</b><small>Collez le code d’intégration fourni par Wordwall ou un autre site.</small></button><button className={inputMode==='link'?'active':''} type="button" onClick={()=>setInputMode('link')}><span>⌁</span><b>Lien du jeu</b><small>Collez directement une adresse HTTPS compatible.</small></button></div>
+    <label>{inputMode==='iframe'?'Code d’intégration iframe':'Lien HTTPS du jeu'}<textarea required rows={inputMode==='iframe'?4:2} value={rawInput} onChange={(event)=>acceptInput(event.target.value)} placeholder={inputMode==='iframe'?'<iframe src="https://wordwall.net/fr/embed/…"></iframe>':'https://wordwall.net/fr/embed/…'} /></label>
+    {inputError&&<p className="form-message error" role="status">{inputError}</p>}
+    {game.embedUrl&&<section className="external-game-editor-preview"><header><div><small>Aperçu immédiat · {game.provider==='wordwall'?'Wordwall':'site externe compatible'}</small><strong>{new URL(game.embedUrl).hostname}</strong></div><a href={game.embedUrl} target="_blank" rel="noreferrer">Ouvrir séparément ↗</a></header><iframe src={game.embedUrl} title="Aperçu du jeu externe" loading="lazy" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-presentation" allow="fullscreen" allowFullScreen referrerPolicy="strict-origin-when-cross-origin" /></section>}
+    <div className="form-row two"><label>Image de présentation, facultative<input type="url" value={game.presentationImageUrl} onChange={(event)=>update({presentationImageUrl:event.target.value})} placeholder="https://…/image.jpg" /></label><label>Mode de validation<select value={game.scoreMode} onChange={(event)=>update({scoreMode:event.target.value==='self_report'?'self_report':'manual_completion'})}><option value="manual_completion">Validation manuelle · activité terminée</option><option value="self_report">L’apprenant indique son score</option></select></label></div>
+    {game.scoreMode==='self_report'&&<label>Score maximal annoncé par le jeu<input type="number" min="1" max="10000" value={game.scoreMax} onChange={(event)=>update({scoreMax:Number(event.target.value)||100})} /></label>}
+    <label>Description du contenu du jeu<textarea rows={4} value={game.gameDescription} onChange={(event)=>update({gameDescription:event.target.value})} placeholder="Décrivez les notions, les questions, les réponses et le contexte professionnel. L’IA s’appuiera uniquement sur ces informations." /></label>
+    <button className="button light external-game-ai" type="button" disabled={aiBusy||!game.embedUrl||game.gameDescription.trim().length<20} onClick={()=>void enrich()}>{aiBusy?'Génération des explications…':'✦ Générer les explications avec l’IA'}</button>{aiMessage&&<p className="form-message" role="status">{aiMessage}</p>}
+    <div className="form-row two"><label>Introduction<textarea rows={3} value={game.introduction} onChange={(event)=>update({introduction:event.target.value})} placeholder="Présentez le but du jeu et son lien avec la formation." /></label><label>Explication avant le jeu<textarea rows={3} value={game.preGameExplanation} onChange={(event)=>update({preGameExplanation:event.target.value})} placeholder="Rappelez les notions utiles avant de commencer." /></label></div>
+    <div className="form-row two"><label>Conseils pour l’apprenant, un par ligne<textarea rows={4} value={game.learnerTips.join('\n')} onChange={(event)=>update({learnerTips:event.target.value.split('\n').map((item)=>item.trim()).filter(Boolean)})} /></label><label>Débriefing après le jeu<textarea rows={4} value={game.debrief} onChange={(event)=>update({debrief:event.target.value})} placeholder="Questions de recul, points à retenir et transfert en situation professionnelle." /></label></div>
+    <details className="external-paper-editor" open><summary>Version papier associée</summary><p>Cette fiche A4 adapte pédagogiquement le jeu ; elle n’en fait jamais une simple capture ni ne contourne les protections du site externe.</p><div className="external-paper-options"><label><input type="checkbox" checked={game.paper.includeQr} onChange={(event)=>updatePaper({includeQr:event.target.checked})} />Inclure le QR code</label><label><input type="checkbox" checked={game.paper.includeExplanations} onChange={(event)=>updatePaper({includeExplanations:event.target.checked})} />Inclure les explications</label><label><input type="checkbox" checked={game.paper.includeAnswers} onChange={(event)=>updatePaper({includeAnswers:event.target.checked})} />Inclure les réponses</label><label><input type="checkbox" checked={game.paper.includeCorrection} onChange={(event)=>updatePaper({includeCorrection:event.target.checked})} />Inclure le corrigé</label><label><input type="checkbox" checked={game.paper.includeImages} onChange={(event)=>updatePaper({includeImages:event.target.checked})} />Inclure les images</label><label><input type="checkbox" checked={game.paper.learnerVersion} onChange={(event)=>updatePaper({learnerVersion:event.target.checked})} />Version apprenant</label><label><input type="checkbox" checked={game.paper.trainerVersion} onChange={(event)=>updatePaper({trainerVersion:event.target.checked})} />Version formateur avec solutions</label></div><div className="form-row two"><label>Capture d’écran autorisée, facultative<input type="url" value={game.paper.screenshotUrl} onChange={(event)=>updatePaper({screenshotUrl:event.target.value})} placeholder="https://…/capture.jpg" /></label><label>Description ou document source<textarea rows={2} value={game.paper.sourceDescription} onChange={(event)=>updatePaper({sourceDescription:event.target.value})} placeholder="Précisez la source utilisée et les droits dont vous disposez." /></label></div><label className="external-official-file">Fichier d’impression officiellement proposé par le site, facultatif<span>{game.paper.officialFileName||'PDF uniquement · 20 Mo maximum'}</span><input type="file" accept="application/pdf,.pdf" disabled={uploadBusy} onChange={(event)=>void uploadOfficialFile(event)}/><b>{uploadBusy?'Import en cours…':'Choisir un PDF officiel'}</b></label>{game.paper.officialFileId&&<button className="button light external-file-remove" type="button" onClick={()=>updatePaper({officialFileId:'',officialFileName:''})}>Dissocier « {game.paper.officialFileName} »</button>}<div className="external-paper-questions"><header><strong>Questions et réponses pour l’adaptation A4</strong><small>Les réponses servent uniquement au corrigé si vous choisissez de l’inclure.</small></header>{questions.map((row,index)=><article key={index}><span>{index+1}</span><input value={row.question} onChange={(event)=>updatePaper({questions:questions.map((item,itemIndex)=>itemIndex===index?{...item,question:event.target.value}:item)})} placeholder="Question ou exercice" /><input value={row.answer} onChange={(event)=>updatePaper({questions:questions.map((item,itemIndex)=>itemIndex===index?{...item,answer:event.target.value}:item)})} placeholder="Réponse attendue" /><button type="button" onClick={()=>updatePaper({questions:questions.filter((_,itemIndex)=>itemIndex!==index)})}>×</button></article>)}<button className="add-question" type="button" onClick={()=>updatePaper({questions:[...questions,{question:'',answer:''}]})}>＋ Ajouter une question papier</button></div></details>
+  </div>;
 }
 
 function TrueFalseEditor({ value,onChange }: { value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void }) {
@@ -184,6 +232,7 @@ function starterContent(type: ActivityType): Record<string,unknown> {
   if (type === 'interactive-image') return { imageUrl:'',hotspots:[{label:'Poignée',answer:'Permet de guider la machine'},{label:'Disque',answer:'Agit sur le sol'}] };
   if (type === 'scenario') return cloneScenario(SCENARIO_EXAMPLE_CONTENT);
   if (type === 'live-poll') return { question:'Quelle notion souhaitez-vous retravailler ?',options:['Sécurité','Dosage','Matériel'] };
+  if (type === 'external-game') return JSON.parse(JSON.stringify(DEFAULT_EXTERNAL_GAME_CONTENT)) as Record<string,unknown>;
   if (type === 'challenge-wheel' || type === 'question-wheel') return { sectors:[{label:type === 'question-wheel' ? 'Pourquoi faut-il baliser la zone ?' : 'Montrez le bon geste de balisage'},{label:type === 'question-wheel' ? 'Comment vérifier un dosage ?' : 'Expliquez le dosage'},{label:type === 'question-wheel' ? 'Quels sont les trois EPI utiles ?' : 'Citez trois EPI'},{label:type === 'question-wheel' ? 'Quel risque voyez-vous ?' : 'Repérez un risque'}] };
   if (type === 'maze') return { cells:[{label:'Départ',correct:true},{label:'Baliser',correct:true},{label:'Mélanger',correct:false},{label:'Contrôler',correct:true}] };
   if (type === 'flying-fruits') return { prompts:[{question:'Quel choix protège les mains ?',options:[{label:'Les gants',correct:true},{label:'Le parfum',correct:false},{label:'La cire',correct:false}]}] };

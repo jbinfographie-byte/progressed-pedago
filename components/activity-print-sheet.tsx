@@ -5,6 +5,7 @@ import { courseImagesFromContent, type CourseImage, type CourseImagePlacement } 
 import { coursePagesFromContent } from '@/lib/course-pages';
 import { CoursePageContent } from '@/components/course-reader';
 import { expectedItemsByTarget, normalizeDragDropContent } from '@/lib/drag-drop';
+import { normalizeExternalGameContent } from '@/lib/external-games';
 
 export type PrintableActivity = {
   type: ActivityType;
@@ -43,6 +44,7 @@ export function StructuredExplanation({ text, compact = false }: { text: string;
 }
 
 export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }) {
+  if(activity.type==='external-game')return <ExternalGamePrintSheet activity={activity}/>;
   const sources = activity.sources ?? [];
   const courseImages = courseImagesFromContent(activity.content).filter((image) => image.status === 'validated');
   const coursePages=coursePagesFromContent(activity.content);
@@ -95,6 +97,17 @@ export function ActivityPrintSheet({ activity }: { activity: PrintableActivity }
   </article>;
 }
 
+function ExternalGamePrintSheet({activity}:{activity:PrintableActivity}) {
+  const game=normalizeExternalGameContent(activity.content);const paper=game.paper;const questions=paper.questions.length?paper.questions:[{question:'Reformulez la notion principale travaillée dans le jeu.',answer:''},{question:'Donnez un exemple d’application dans une situation professionnelle.',answer:''},{question:'Quelle erreur faut-il éviter et pourquoi ?',answer:''}];
+  const qrUrl=`/api/external-games/qr?url=${encodeURIComponent(game.embedUrl)}`;
+  return <article className="print-sheet external-game-print-sheet" aria-hidden="true">
+    <header className="print-cover"><div className="print-brand"><span>P</span><div><strong>Progressed Pédago</strong><small>Activité externe et adaptation papier</small></div></div><span className="print-format">Jeu externe intégré</span><p>{activity.theme||'Activité pédagogique'}</p><h1>{activity.title}</h1><div className="print-meta"><span><b>Public</b>{activity.audience||'Adultes en formation'}</span><span><b>Niveau</b>{levelLabel(activity.level)}</span><span><b>Durée</b>{activity.durationMinutes?`${activity.durationMinutes} min`:'À adapter'}</span></div>{paper.includeImages&&game.presentationImageUrl&&<figure className="external-paper-cover-image"><img src={game.presentationImageUrl} alt="Visuel de présentation du jeu"/></figure>}</header>
+    {paper.learnerVersion&&<><section className="print-identity"><span>Prénom et nom : <i/></span><span>Date : <i/></span><span>Groupe : <i/></span></section><section className="print-block external-paper-introduction"><div><span className="print-number">1</span><div><p className="print-kicker">Version apprenant</p><h2>Avant de commencer</h2></div></div><ul>{(activity.objectives?.length?activity.objectives:['Comprendre et appliquer les notions essentielles du jeu.']).map((objective)=><li key={objective}>{objective}</li>)}</ul>{activity.instructions&&<div className="print-instruction"><strong>Consignes</strong><p>{activity.instructions}</p></div>}{paper.includeExplanations&&<><StructuredExplanation text={game.introduction||game.gameDescription} compact/>{game.preGameExplanation&&<StructuredExplanation text={game.preGameExplanation} compact/>}{game.learnerTips.length>0&&<div className="external-paper-tips"><strong>Conseils</strong><ul>{game.learnerTips.map((tip)=><li key={tip}>{tip}</li>)}</ul></div>}</>}</section><section className="print-block external-paper-access"><div><span className="print-number">2</span><div><p className="print-kicker">Accès au jeu</p><h2>Jouer en ligne</h2></div></div><div className="external-paper-access-grid">{paper.includeQr&&game.embedUrl&&<figure><img src={qrUrl} alt="QR code vers le jeu externe"/><figcaption>Scannez pour ouvrir le jeu.</figcaption></figure>}<div><strong>Lien sécurisé HTTPS</strong><p>{game.embedUrl}</p><p>Si le jeu ne s’ouvre pas dans l’application, utilisez ce lien dans votre navigateur.</p>{paper.officialFileName&&<p><strong>Support officiel associé :</strong> {paper.officialFileName}</p>}</div></div>{paper.includeImages&&paper.screenshotUrl&&<figure className="external-paper-screenshot"><img src={paper.screenshotUrl} alt="Aperçu autorisé du jeu externe"/><figcaption>Aperçu fourni par le formateur.</figcaption></figure>}</section><section className="print-block print-page-start external-paper-exercises"><div><span className="print-number">3</span><div><p className="print-kicker">Adaptation imprimable</p><h2>Questions et exercices</h2></div></div>{paper.sourceDescription&&<p className="print-adaptation-note">{paper.sourceDescription}</p>}{questions.map((row,index)=><article key={index}><h3><span>{index+1}</span>{row.question}</h3><div className="external-paper-answer-lines"><i/><i/><i/></div>{paper.includeAnswers&&row.answer&&<p className="print-answer"><strong>Réponse :</strong> {row.answer}</p>}</article>)}</section></>}
+    {paper.trainerVersion&&<section className="print-correction print-block print-page-start external-paper-trainer"><div className="print-teacher-label">Version formateur · solutions</div><div><span className="print-number">4</span><div><p className="print-kicker">Débriefing</p><h2>Réponses et accompagnement</h2></div></div>{questions.map((row,index)=><article key={index}><h3>{index+1}. {row.question}</h3><p className="print-answer"><strong>Réponse attendue :</strong> {row.answer||'À apprécier selon les objectifs, la justification et le contexte professionnel.'}</p></article>)}{game.debrief&&<div><strong>Débriefing après le jeu</strong><StructuredExplanation text={game.debrief} compact/></div>}{paper.includeCorrection&&activity.correction&&<div className="print-global-correction"><strong>Correction et explications complémentaires</strong><StructuredExplanation text={activity.correction} compact/></div>}</section>}
+    <footer className="print-footer"><span>Progressed Pédago</span><span>{activity.title}</span></footer>
+  </article>;
+}
+
 function PrintCoursePracticeAnswers({pages}:{pages:ReturnType<typeof coursePagesFromContent>}) {
   const lessons=pages.slice(1).filter((page)=>page.practice.title||page.practice.question);
   if(!lessons.length)return null;
@@ -107,6 +120,7 @@ function PrintCourseImages({images,placement}:{images:CourseImage[];placement:Co
 }
 
 function PrintableMechanic({ type,content }: { type: ActivityType; content: Record<string,unknown> }) {
+  if(type==='external-game')return <p className="print-adaptation-note">La version papier associée est préparée à partir des questions, consignes et options enregistrées avec le jeu.</p>;
   if (type === 'quiz' || type === 'tv-quiz') {
     const questions = (Array.isArray(content.questions) ? content.questions : []) as Array<{ question?: string; choices?: string[] }>;
     return <div className="print-question-list">{questions.map((question,index) => <section className="print-question" key={index}><h3><span>{index + 1}</span>{question.question}</h3><div className="print-choices">{(question.choices ?? []).map((choice,choiceIndex) => <p key={choiceIndex}><i>{String.fromCharCode(65 + choiceIndex)}</i>{choice}<b /></p>)}</div></section>)}</div>;

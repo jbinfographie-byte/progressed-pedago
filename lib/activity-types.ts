@@ -1,4 +1,5 @@
 import { validateScenarioContent } from './scenario.ts';
+import { externalGameValidationErrors } from './external-games.ts';
 
 export const ACTIVITY_TYPES = [
   ['quiz', 'Quiz interactif', 'Questions, réponses mélangées et explications'], ['drag-drop', 'Glisser-déposer', 'Déplacer des éléments vers les bonnes zones'],
@@ -15,6 +16,7 @@ export const ACTIVITY_TYPES = [
   ['memory-cards', 'Cartes mémoire', 'Mémoriser et marquer acquis ou à revoir'], ['live-poll', 'Sondage en direct', 'Collecter et afficher des réponses'],
   ['challenge-wheel', 'Roue du défi', 'Faire tourner une roue de missions'], ['question-wheel', 'Roue de questions', 'Faire tourner une roue de questions'],
   ['categories', 'Classement par catégories', 'Répartir des éléments par catégorie'],
+  ['external-game', 'Jeu externe intégré', 'Intégrer Wordwall ou une activité HTTPS compatible'],
 ] as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[number][0];
@@ -23,7 +25,7 @@ const creatableActivityTypeIds = new Set<string>(CREATABLE_ACTIVITY_TYPE_IDS);
 export const CREATABLE_ACTIVITY_TYPES = ACTIVITY_TYPES.filter(([type]) => creatableActivityTypeIds.has(type));
 export type CreatableActivityType = (typeof CREATABLE_ACTIVITY_TYPE_IDS)[number];
 export function isCreatableActivityType(value: unknown): value is CreatableActivityType { return typeof value === 'string' && creatableActivityTypeIds.has(value); }
-export const MANUAL_ACTIVITY_TYPE_IDS = ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll'] as const satisfies readonly ActivityType[];
+export const MANUAL_ACTIVITY_TYPE_IDS = ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll','external-game'] as const satisfies readonly ActivityType[];
 const manualActivityTypeIds = new Set<string>(MANUAL_ACTIVITY_TYPE_IDS);
 export const MANUAL_ACTIVITY_TYPES = MANUAL_ACTIVITY_TYPE_IDS.map((type) => ACTIVITY_TYPES.find(([candidate]) => candidate === type)!);
 export type ManualActivityType = (typeof MANUAL_ACTIVITY_TYPE_IDS)[number];
@@ -57,6 +59,7 @@ export function validateMechanic(type: ActivityType, content: Record<string, unk
     case 'flip-tiles': case 'revision-cards': case 'random-cards': case 'memory-cards': case 'pair-or-not': requireItems('cards'); break;
     case 'type-answer': requireItems('prompts'); break; case 'interactive-image': if (!text(content.imageUrl)) errors.push('Une image est obligatoire.'); requireItems('hotspots'); break;
     case 'scenario': if (Array.isArray(content.scenes)) errors.push(...validateScenarioContent(content)); else requireItems('steps'); break; case 'live-poll': if (!text(content.question)) errors.push('La question du sondage est obligatoire.'); requireItems('options', 2); break;
+    case 'external-game': errors.push(...externalGameValidationErrors(content)); break;
     case 'challenge-wheel': case 'question-wheel': requireItems('sectors', 2); break; case 'drag-drop': requireItems('items', 2); if (list(content.zones).length < 2 && list(content.categories).length < 2) errors.push('La mécanique « drag-drop » nécessite au moins 2 zones ou catégories.'); break; case 'categories': requireItems('categories', 2); requireItems('items', 2); break;
     case 'maze': requireItems('cells', 4); break; case 'flying-fruits': requireItems('prompts'); break; default: requireItems('items', 2);
   }

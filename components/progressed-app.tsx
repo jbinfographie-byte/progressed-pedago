@@ -30,7 +30,7 @@ type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { message: strin
 type Section = 'dashboard' | 'activities' | 'documents' | 'results' | 'connections' | 'admin';
 
 const tones = ['mint','blue','peach','aqua'];
-const symbols = ['?','↕','✓','▦','◌','ABC','▧','◫','⌨','≡','▤','⇄','◎','★','▣','⌘','◧','↔','A','●','◉','➜','▥','◔','✺','?','▦'];
+const symbols = ['?','↕','✓','▦','◌','ABC','▧','◫','⌨','≡','▤','⇄','◎','★','▣','⌘','◧','↔','A','●','◉','➜','▥','◔','✺','?','▦','⌁'];
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);

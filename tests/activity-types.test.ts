@@ -19,12 +19,13 @@ function validContent(type: ActivityType): Record<string, unknown> {
   if (type === 'maze') return { cells: [{},{},{},{}] };
   if (type === 'flying-fruits') return { prompts: [{ question: 'Q' }] };
   if (type === 'drag-drop') return { mode:'association',categories:[{ id:'a',label:'A' },{ id:'b',label:'B' }],items:[{ label:'1',category:'a' },{ label:'2',category:'b' }] };
+  if (type === 'external-game') return { embedUrl:'https://wordwall.net/fr/embed/example',paper:{learnerVersion:true,trainerVersion:false} };
   return { items: [{ label: 'A' },{ label: 'B' }] };
 }
 
-test('les 27 mécaniques sont déclarées avec des identifiants uniques', () => {
-  assert.equal(ACTIVITY_TYPES.length, 27);
-  assert.equal(new Set(ACTIVITY_TYPES.map(([type]) => type)).size, 27);
+test('les 28 mécaniques sont déclarées avec des identifiants uniques', () => {
+  assert.equal(ACTIVITY_TYPES.length, 28);
+  assert.equal(new Set(ACTIVITY_TYPES.map(([type]) => type)).size, 28);
 });
 
 test('seuls les quatre formats demandés sont proposés à la création', () => {
@@ -33,8 +34,8 @@ test('seuls les quatre formats demandés sont proposés à la création', () => 
   assert.equal(isCreatableActivityType('word-search'), false);
 });
 
-test('l’atelier manuel propose dix formats guidés sans charger le tableau de bord', () => {
-  assert.deepEqual(MANUAL_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll']);
+test('l’atelier manuel propose onze formats guidés sans charger le tableau de bord', () => {
+  assert.deepEqual(MANUAL_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll','external-game']);
   assert.equal(isManualActivityType('matching'),true);
   assert.equal(isManualActivityType('word-search'),false);
 });
