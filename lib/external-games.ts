@@ -25,6 +25,7 @@ export type ExternalGameContent = {
   provider: ExternalGameProvider;
   sourceUrl: string;
   embedUrl: string;
+  htmlSourceName: string;
   presentationImageUrl: string;
   gameDescription: string;
   introduction: string;
@@ -46,6 +47,7 @@ export const DEFAULT_EXTERNAL_GAME_CONTENT: ExternalGameContent = {
   provider: 'wordwall',
   sourceUrl: '',
   embedUrl: '',
+  htmlSourceName: '',
   presentationImageUrl: '',
   gameDescription: '',
   introduction: '',
@@ -82,6 +84,42 @@ export function extractExternalGameUrl(input: string): string | null {
   if (!/^<iframe\b/i.test(value) || /<\s*script\b/i.test(value)) return null;
   const source = value.match(/\bsrc\s*=\s*(["'])(.*?)\1/i)?.[2];
   return source ? normalizeExternalGameUrl(decodeHtmlUrl(source)) : null;
+}
+
+export type ExternalHtmlImport = {
+  sourceUrl: string;
+  embedUrl: string;
+  provider: ExternalGameProvider;
+  title: string;
+  readableText: string;
+};
+
+export function inspectExternalHtml(input: string): ExternalHtmlImport | null {
+  const html = input.replace(/\0/g, '').slice(0, 2_000_000);
+  if (!html.trim()) return null;
+  const inert = html
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ')
+    .replace(/<noscript\b[\s\S]*?<\/noscript\s*>/gi, ' ');
+  const iframeUrls = [...inert.matchAll(/<iframe\b[^>]*>/gi)].map((match) => htmlAttribute(match[0], 'src'));
+  const metadataUrls = [...inert.matchAll(/<(?:meta|link)\b[^>]*>/gi)].flatMap((match) => {
+    const tag = match[0];
+    const relation = `${htmlAttribute(tag, 'rel')} ${htmlAttribute(tag, 'property')} ${htmlAttribute(tag, 'name')}`.toLowerCase();
+    return /canonical|og:url|twitter:url/.test(relation) ? [htmlAttribute(tag, 'href') || htmlAttribute(tag, 'content')] : [];
+  });
+  const linkedUrls = [...inert.matchAll(/<a\b[^>]*>/gi)].map((match) => htmlAttribute(match[0], 'href'));
+  const normalizedIframes = iframeUrls.map((value) => normalizeExternalGameUrl(decodeHtmlUrl(value))).filter((value):value is string=>Boolean(value));
+  const otherCandidates = [...metadataUrls, ...linkedUrls].map((value) => normalizeExternalGameUrl(decodeHtmlUrl(value))).filter((value): value is string => Boolean(value));
+  const sourceUrl = normalizedIframes[0] ?? otherCandidates.find((value) => providerFromExternalGameUrl(value) !== 'other') ?? otherCandidates[0] ?? '';
+  if (!sourceUrl) return null;
+  const titleMatch = inert.match(/<title\b[^>]*>([\s\S]*?)<\/title\s*>/i)?.[1] ?? '';
+  const title = decodeHtmlText(titleMatch.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 220);
+  const readableText = decodeHtmlText(inert.replace(/<svg\b[\s\S]*?<\/svg\s*>/gi, ' ').replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60_000);
+  return { sourceUrl,embedUrl:externalResourceEmbedUrl(sourceUrl),provider:providerFromExternalGameUrl(sourceUrl),title,readableText };
 }
 
 export function normalizeExternalGameUrl(value: string): string | null {
@@ -143,6 +181,7 @@ export function normalizeExternalGameContent(value: unknown): ExternalGameConten
     provider: providerFromExternalGameUrl(sourceUrl || embedUrl),
     sourceUrl,
     embedUrl,
+    htmlSourceName: text(source.htmlSourceName).slice(0,300),
     presentationImageUrl: normalizeExternalGameUrl(text(source.presentationImageUrl)) ?? '',
     gameDescription: text(source.gameDescription),
     introduction: text(source.introduction),
@@ -192,6 +231,26 @@ function isPrivateHostname(hostname: string): boolean {
 function decodeHtmlUrl(value: string): string {
   return value.replace(/&amp;/gi, '&').replace(/&#x2f;/gi, '/').replace(/&#47;/g, '/').replace(/&quot;/gi, '"').replace(/&#39;/g, "'");
 }
+
+function htmlAttribute(tag:string,name:string):string {
+  const quoted = tag.match(new RegExp(`\\b${name}\\s*=\\s*(["'])([\\s\\S]*?)\\1`,'i'))?.[2];
+  if (quoted !== undefined) return quoted;
+  return tag.match(new RegExp(`\\b${name}\\s*=\\s*([^\\s>]+)`,'i'))?.[1] ?? '';
+}
+
+function decodeHtmlText(value:string):string {
+  return value
+    .replace(/&#(\d+);/g,(_,code:string)=>decodeCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi,(_,code:string)=>decodeCodePoint(Number.parseInt(code,16)))
+    .replace(/&nbsp;/gi,' ')
+    .replace(/&amp;/gi,'&')
+    .replace(/&lt;/gi,'<')
+    .replace(/&gt;/gi,'>')
+    .replace(/&quot;/gi,'"')
+    .replace(/&#39;|&apos;/gi,"'");
+}
+
+function decodeCodePoint(value:number):string { return Number.isInteger(value)&&value>=0&&value<=0x10ffff?String.fromCodePoint(value):''; }
 
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function boolean(value: unknown, fallback: boolean): boolean { return typeof value === 'boolean' ? value : fallback; }

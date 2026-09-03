@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { externalGameValidationErrors, externalResourceEmbedUrl, extractExternalGameUrl, normalizeExternalGameContent, providerFromExternalGameUrl } from '../lib/external-games.ts';
+import { externalGameValidationErrors, externalResourceEmbedUrl, extractExternalGameUrl, inspectExternalHtml, normalizeExternalGameContent, providerFromExternalGameUrl } from '../lib/external-games.ts';
 
 test('extrait uniquement la source HTTPS d’un iframe Wordwall',()=>{
   const input='<iframe style="max-width:100%" src="https://wordwall.net/fr/embed/b54fc7aa480c4254876c2d199faa26c0?themeId=1" onload="alert(1)" allowfullscreen></iframe>';
@@ -14,6 +14,20 @@ test('refuse le HTTP, les scripts et les adresses privées',()=>{
   assert.equal(extractExternalGameUrl('https://127.0.0.1/game'),null);
   assert.equal(extractExternalGameUrl('https://192.168.1.2/game'),null);
   assert.equal(extractExternalGameUrl('https://[::1]/game'),null);
+});
+
+test('nettoie un fichier HTML et extrait uniquement sa ressource HTTPS',()=>{
+  const imported=inspectExternalHtml(`<!doctype html><html><head><title>Quiz &amp; sécurité</title><script>alert('jamais exécuté')</script></head><body><h1>Prévention des chutes</h1><iframe src="https://wordwall.net/fr/embed/demo?themeId=1" onload="steal()"></iframe><p>Associez chaque risque à la bonne prévention.</p></body></html>`);
+  assert.equal(imported?.sourceUrl,'https://wordwall.net/fr/embed/demo?themeId=1');
+  assert.equal(imported?.provider,'wordwall');
+  assert.equal(imported?.title,'Quiz & sécurité');
+  assert.match(imported?.readableText??'',/Prévention des chutes/);
+  assert.doesNotMatch(imported?.readableText??'',/jamais exécuté|steal/);
+});
+
+test('refuse un fichier HTML sans adresse externe HTTPS intégrable',()=>{
+  assert.equal(inspectExternalHtml('<html><body><iframe src="javascript:alert(1)"></iframe></body></html>'),null);
+  assert.equal(inspectExternalHtml('<html><body><a href="http://example.org/game">Jeu</a></body></html>'),null);
 });
 
 test('normalise le contenu papier et n’invente pas de score',()=>{
@@ -45,6 +59,7 @@ test('conserve les livrables choisis et les appuis fournis',()=>{
     selectedOutputs:['course','quiz','pdf','quiz','unknown'],
   });
   assert.equal(resource.provider,'learningapps');
+  assert.equal(resource.htmlSourceName,'');
   assert.deepEqual(resource.selectedOutputs,['course','quiz','pdf']);
   assert.deepEqual(resource.supportFileIds,['capture_12345678']);
 });
