@@ -11,6 +11,7 @@ test('reconnaît les principaux liens YouTube sans accepter un autre domaine', (
 
 test('normalise le point de départ du studio', () => {
   assert.equal(normalizeSourceKind('youtube'),'youtube');
+  assert.equal(normalizeSourceKind('external'),'external');
   assert.equal(normalizeSourceKind('inconnu'),'prompt');
 });
 

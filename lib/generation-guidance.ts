@@ -10,6 +10,14 @@ export function buildGenerationPrompt(prompt: string, formats: ActivityType[], b
   const depth = normalizeExplanationDepth(body.explanationDepth);
   const pageCount = Math.min(24,Math.max(4,Number(body.coursePageCount) || 7));
   const multiPageCourse = body.multiPageCourse === true;
+  const externalOutputs = Array.isArray(body.externalOutputs) ? body.externalOutputs.map(String) : [];
+  const externalInstruction = body.sourceKind === 'external' ? `
+Exigences pour la ressource externe analysée :
+- L’analyse validée par le formateur est la référence principale. Les contenus demandés sont : ${externalOutputs.join(', ') || 'cours, résumé, explications, quiz, corrigé et PDF'}.
+- Les questions, exemples, mises en situation et corrections doivent découler directement des notions réellement identifiées. Ne te contente jamais de reprendre le titre de la ressource.
+- Ne prétends pas connaître un écran, une question, une réponse ou un score qui n’apparaît pas dans la source ou les éléments fournis.
+- L’activité externe elle-même est enregistrée séparément par l’application : génère ici uniquement les activités complémentaires demandées.
+` : '';
   const lessonInstruction = depth === 'none'
     ? 'Le champ explanation peut rester vide. Fournis néanmoins une correction brève et exacte pour chaque réponse.'
     : depth === 'essential'
@@ -52,6 +60,7 @@ ${lessonInstruction}
 - Les objectifs, le mini-cours, l’exercice et la correction doivent traiter exactement le même contenu.
 ${multiPageInstruction}
 ${scenarioInstruction}
+${externalInstruction}
 
 Exigences pour les mécaniques :
 - quiz et tv-quiz : 5 à 10 questions dans questions, 3 ou 4 choices plausibles, correctIndex varié, explanation détaillée pour chaque question ;

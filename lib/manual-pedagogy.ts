@@ -53,10 +53,12 @@ function buildExternalGamePedagogy(title:string,objectives:string[],content:Reco
   const game=normalizeExternalGameContent(content);
   const explanation=[
     '## Introduction',game.introduction||`Cette activité externe permet de travailler « ${title} » de manière interactive.`,
+    game.summary?'## Résumé de la ressource':'',game.summary,
     '## Avant de commencer',game.preGameExplanation||'Relisez les objectifs et prenez le temps d’observer chaque consigne avant de répondre.',
     '## Objectifs',...(objectives.length?objectives:['Comprendre la notion principale et savoir la mobiliser dans une situation professionnelle.']).map((item)=>`- ${item}`),
     '## Conseils',...(game.learnerTips.length?game.learnerTips:['Lisez entièrement chaque proposition.','Justifiez mentalement votre choix.','Revenez au cours en cas d’hésitation.']).map((item)=>`- ${item}`),
-  ].join('\n');
+    game.memo?'## Fiche mémo':'',game.memo,
+  ].filter(Boolean).join('\n');
   const correctionText=text(content.aiCorrection);
   const answers=game.paper.questions.filter((item)=>item.answer).map((item,index)=>`- ${index+1}. ${item.question} — ${item.answer}`);
   const correction=[

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { externalGameValidationErrors, extractExternalGameUrl, normalizeExternalGameContent, providerFromExternalGameUrl } from '../lib/external-games.ts';
+import { externalGameValidationErrors, externalResourceEmbedUrl, extractExternalGameUrl, normalizeExternalGameContent, providerFromExternalGameUrl } from '../lib/external-games.ts';
 
 test('extrait uniquement la source HTTPS d’un iframe Wordwall',()=>{
   const input='<iframe style="max-width:100%" src="https://wordwall.net/fr/embed/b54fc7aa480c4254876c2d199faa26c0?themeId=1" onload="alert(1)" allowfullscreen></iframe>';
@@ -24,9 +24,34 @@ test('normalise le contenu papier et n’invente pas de score',()=>{
   assert.deepEqual(externalGameValidationErrors(game),[]);
 });
 
+test('reconnaît et prépare les ressources Wordwall, vidéo et autres services',()=>{
+  assert.equal(providerFromExternalGameUrl('https://wordwall.net/fr/embed/demo'),'wordwall');
+  assert.equal(providerFromExternalGameUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'),'youtube');
+  assert.equal(providerFromExternalGameUrl('https://vimeo.com/76979871'),'vimeo');
+  assert.equal(providerFromExternalGameUrl('https://view.genially.com/demo'),'genially');
+  assert.equal(providerFromExternalGameUrl('https://learningapps.org/view123'),'learningapps');
+  assert.equal(providerFromExternalGameUrl('https://www.canva.com/design/demo/view'),'canva');
+  assert.equal(providerFromExternalGameUrl('https://example.org/support.pdf'),'document');
+  assert.equal(providerFromExternalGameUrl('https://example.org/activity'),'other');
+  assert.equal(externalResourceEmbedUrl('https://youtu.be/dQw4w9WgXcQ'),'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
+  assert.equal(externalResourceEmbedUrl('https://vimeo.com/76979871'),'https://player.vimeo.com/video/76979871');
+});
+
+test('conserve les livrables choisis et les appuis fournis',()=>{
+  const resource=normalizeExternalGameContent({
+    sourceUrl:'https://learningapps.org/view123',
+    supportText:'Consigne et contenu pédagogique fournis par le formateur.',
+    supportFileIds:['capture_12345678'],
+    selectedOutputs:['course','quiz','pdf','quiz','unknown'],
+  });
+  assert.equal(resource.provider,'learningapps');
+  assert.deepEqual(resource.selectedOutputs,['course','quiz','pdf']);
+  assert.deepEqual(resource.supportFileIds,['capture_12345678']);
+});
+
 test('exige un lien valide et au moins une version papier',()=>{
   assert.deepEqual(externalGameValidationErrors({embedUrl:'javascript:alert(1)',paper:{learnerVersion:false,trainerVersion:false}}),[
-    'Le jeu externe nécessite un lien HTTPS ou un code iframe valide.',
+    'La ressource externe nécessite un lien HTTPS ou un code iframe valide.',
     'Choisissez au moins une version papier : apprenant ou formateur.',
   ]);
 });

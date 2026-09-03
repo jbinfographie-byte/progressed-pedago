@@ -1,5 +1,8 @@
-export type ExternalGameProvider = 'wordwall' | 'other';
+import { parseVimeoVideoId, parseYouTubeVideoId } from './source-ingestion.ts';
+
+export type ExternalGameProvider = 'wordwall' | 'youtube' | 'vimeo' | 'genially' | 'learningapps' | 'canva' | 'document' | 'other';
 export type ExternalGameScoreMode = 'manual_completion' | 'self_report';
+export type ExternalResourceOutput = 'course' | 'summary' | 'memo' | 'explanations' | 'quiz' | 'true-false' | 'open-questions' | 'scenario' | 'case-study' | 'exercise' | 'correction' | 'pdf';
 
 export type ExternalGameQuestion = { question: string; answer: string };
 export type ExternalGamePaperOptions = {
@@ -18,8 +21,9 @@ export type ExternalGamePaperOptions = {
 };
 
 export type ExternalGameContent = {
-  version: 1;
+  version: 2;
   provider: ExternalGameProvider;
+  sourceUrl: string;
   embedUrl: string;
   presentationImageUrl: string;
   gameDescription: string;
@@ -27,14 +31,20 @@ export type ExternalGameContent = {
   preGameExplanation: string;
   learnerTips: string[];
   debrief: string;
+  summary: string;
+  memo: string;
+  supportText: string;
+  supportFileIds: string[];
+  selectedOutputs: ExternalResourceOutput[];
   scoreMode: ExternalGameScoreMode;
   scoreMax: number;
   paper: ExternalGamePaperOptions;
 };
 
 export const DEFAULT_EXTERNAL_GAME_CONTENT: ExternalGameContent = {
-  version: 1,
+  version: 2,
   provider: 'wordwall',
+  sourceUrl: '',
   embedUrl: '',
   presentationImageUrl: '',
   gameDescription: '',
@@ -42,6 +52,11 @@ export const DEFAULT_EXTERNAL_GAME_CONTENT: ExternalGameContent = {
   preGameExplanation: '',
   learnerTips: [],
   debrief: '',
+  summary: '',
+  memo: '',
+  supportText: '',
+  supportFileIds: [],
+  selectedOutputs: ['course','summary','explanations','quiz','correction','pdf'],
   scoreMode: 'manual_completion',
   scoreMax: 100,
   paper: {
@@ -85,16 +100,38 @@ export function normalizeExternalGameUrl(value: string): string | null {
 export function providerFromExternalGameUrl(value: string): ExternalGameProvider {
   try {
     const hostname = new URL(value).hostname.toLowerCase();
-    return hostname === 'wordwall.net' || hostname.endsWith('.wordwall.net') ? 'wordwall' : 'other';
+    if (hostname === 'wordwall.net' || hostname.endsWith('.wordwall.net')) return 'wordwall';
+    if (hostname === 'youtube.com' || hostname.endsWith('.youtube.com') || hostname === 'youtu.be' || hostname.endsWith('.youtu.be') || hostname === 'youtube-nocookie.com' || hostname.endsWith('.youtube-nocookie.com')) return 'youtube';
+    if (hostname === 'vimeo.com' || hostname.endsWith('.vimeo.com')) return 'vimeo';
+    if (hostname === 'genial.ly' || hostname.endsWith('.genial.ly') || hostname === 'genially.com' || hostname.endsWith('.genially.com')) return 'genially';
+    if (hostname === 'learningapps.org' || hostname.endsWith('.learningapps.org')) return 'learningapps';
+    if (hostname === 'canva.com' || hostname.endsWith('.canva.com')) return 'canva';
+    if (/\.(pdf|docx?|pptx?|txt)$/i.test(new URL(value).pathname)) return 'document';
+    return 'other';
   } catch {
     return 'other';
   }
 }
 
+export function providerLabel(provider: ExternalGameProvider): string {
+  return ({wordwall:'Wordwall',youtube:'YouTube',vimeo:'Vimeo',genially:'Genially',learningapps:'LearningApps',canva:'Canva',document:'Document en ligne',other:'Application externe'} as Record<ExternalGameProvider,string>)[provider];
+}
+
+export function externalResourceEmbedUrl(value: string): string {
+  const source = normalizeExternalGameUrl(value);
+  if (!source) return '';
+  const youtubeId = parseYouTubeVideoId(source);
+  if (youtubeId) return `https://www.youtube-nocookie.com/embed/${youtubeId}`;
+  const vimeoId = parseVimeoVideoId(source);
+  if (vimeoId) return `https://player.vimeo.com/video/${vimeoId}`;
+  return source;
+}
+
 export function normalizeExternalGameContent(value: unknown): ExternalGameContent {
   const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const paperSource = source.paper && typeof source.paper === 'object' ? source.paper as Record<string, unknown> : {};
-  const embedUrl = normalizeExternalGameUrl(text(source.embedUrl)) ?? '';
+  const sourceUrl = normalizeExternalGameUrl(text(source.sourceUrl)) ?? normalizeExternalGameUrl(text(source.embedUrl)) ?? '';
+  const embedUrl = externalResourceEmbedUrl(normalizeExternalGameUrl(text(source.embedUrl)) ?? sourceUrl);
   const questions = Array.isArray(paperSource.questions) ? paperSource.questions.flatMap((item) => {
     if (!item || typeof item !== 'object') return [];
     const row = item as Record<string, unknown>;
@@ -102,8 +139,9 @@ export function normalizeExternalGameContent(value: unknown): ExternalGameConten
     return question ? [{ question, answer }] : [];
   }).slice(0, 40) : [];
   return {
-    version: 1,
-    provider: source.provider === 'wordwall' || providerFromExternalGameUrl(embedUrl) === 'wordwall' ? 'wordwall' : 'other',
+    version: 2,
+    provider: providerFromExternalGameUrl(sourceUrl || embedUrl),
+    sourceUrl,
     embedUrl,
     presentationImageUrl: normalizeExternalGameUrl(text(source.presentationImageUrl)) ?? '',
     gameDescription: text(source.gameDescription),
@@ -111,6 +149,11 @@ export function normalizeExternalGameContent(value: unknown): ExternalGameConten
     preGameExplanation: text(source.preGameExplanation),
     learnerTips: Array.isArray(source.learnerTips) ? source.learnerTips.map(text).filter(Boolean).slice(0, 12) : [],
     debrief: text(source.debrief),
+    summary: text(source.summary),
+    memo: text(source.memo),
+    supportText: text(source.supportText).slice(0,60_000),
+    supportFileIds: Array.isArray(source.supportFileIds) ? source.supportFileIds.map(safeId).filter(Boolean).slice(0,6) : [],
+    selectedOutputs: normalizeOutputs(source.selectedOutputs),
     scoreMode: source.scoreMode === 'self_report' ? 'self_report' : 'manual_completion',
     scoreMax: clampInteger(source.scoreMax, 1, 10_000, 100),
     paper: {
@@ -133,7 +176,7 @@ export function normalizeExternalGameContent(value: unknown): ExternalGameConten
 export function externalGameValidationErrors(value: unknown): string[] {
   const game = normalizeExternalGameContent(value);
   const errors: string[] = [];
-  if (!game.embedUrl) errors.push('Le jeu externe nécessite un lien HTTPS ou un code iframe valide.');
+  if (!game.sourceUrl || !game.embedUrl) errors.push('La ressource externe nécessite un lien HTTPS ou un code iframe valide.');
   if (!game.paper.learnerVersion && !game.paper.trainerVersion) errors.push('Choisissez au moins une version papier : apprenant ou formateur.');
   return errors;
 }
@@ -154,3 +197,8 @@ function text(value: unknown): string { return typeof value === 'string' ? value
 function boolean(value: unknown, fallback: boolean): boolean { return typeof value === 'boolean' ? value : fallback; }
 function clampInteger(value: unknown, minimum: number, maximum: number, fallback: number): number { const number = Number(value); return Number.isInteger(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback; }
 function safeId(value:unknown):string { const candidate=text(value);return /^[A-Za-z0-9_-]{8,100}$/.test(candidate)?candidate:''; }
+function normalizeOutputs(value:unknown):ExternalResourceOutput[] {
+  const allowed = new Set<ExternalResourceOutput>(['course','summary','memo','explanations','quiz','true-false','open-questions','scenario','case-study','exercise','correction','pdf']);
+  const values = Array.isArray(value) ? value.map(text).filter((item):item is ExternalResourceOutput=>allowed.has(item as ExternalResourceOutput)) : [];
+  return [...new Set(values.length ? values : DEFAULT_EXTERNAL_GAME_CONTENT.selectedOutputs)];
+}
