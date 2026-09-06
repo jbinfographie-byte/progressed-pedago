@@ -3,6 +3,8 @@ import { getDb } from '@/db';
 import { activities, courseFolders, learnerResults, learningPathItems, learningPaths, mainFolders, trainingShares } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
+import { buildResultCorrection } from '@/lib/result-corrections';
+import type { ActivityType } from '@/lib/activity-types';
 
 export async function GET(request: Request) {
   try {
@@ -23,6 +25,9 @@ export async function GET(request: Request) {
       id:learnerResults.id,
       activityId:learnerResults.activityId,
       activityTitle:activities.title,
+      activityType:activities.type,
+      activityContentJson:activities.contentJson,
+      activityCorrection:activities.correction,
       trainingId:learnerResults.trainingId,
       trainingTitle:courseFolders.name,
       mainFolderId:courseFolders.mainFolderId,
@@ -49,9 +54,11 @@ export async function GET(request: Request) {
       .orderBy(desc(learnerResults.createdAt));
     const sessions = await getDb().select({id:trainingShares.id,trainingId:trainingShares.trainingId,shortCode:trainingShares.shortCode,mode:trainingShares.mode,status:trainingShares.status,createdAt:trainingShares.createdAt})
       .from(trainingShares).where(eq(trainingShares.trainerId,user.id)).orderBy(desc(trainingShares.createdAt));
-    return jsonOk({results:rows.map((row)=>({...row,answers:JSON.parse(row.answersJson)})),sessions});
+    return jsonOk({results:rows.map((row)=>{const answers=parseJson(row.answersJson,[]);return {...row,activityContentJson:undefined,activityCorrection:undefined,answers,correctionDetails:buildResultCorrection(row.activityType as ActivityType,parseJson(row.activityContentJson,{}),answers,row.activityCorrection)};}),sessions});
   } catch(error) { return jsonError(error); }
 }
+
+function parseJson<T>(value:string,fallback:T):T { try{return JSON.parse(value) as T;}catch{return fallback;} }
 
 export async function POST(request: Request) {
   try {

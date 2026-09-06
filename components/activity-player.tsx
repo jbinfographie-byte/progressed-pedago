@@ -11,12 +11,14 @@ import { coursePagesFromContent } from '@/lib/course-pages';
 import { normalizeScenarioContent, type ScenarioChoice } from '@/lib/scenario';
 import { expectedItemsByTarget, normalizeDragDropContent, type DragDropItem, type DragDropTarget } from '@/lib/drag-drop';
 import { normalizeExternalGameContent, providerLabel, type ExternalGamePaperOptions } from '@/lib/external-games';
+import { buildResultCorrection, type ResultCorrection } from '@/lib/result-corrections';
+import { VoiceCoach } from '@/components/voice-coach';
 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
 type SourceMedia = { kind: 'youtube' | 'vimeo'; url: string; embedUrl: string; title: string; videoId: string } | { kind: 'direct'; url: string; title: string; mimeType: string };
 export type JourneyCompletion = {score?:number;maxScore?:number;answers?:unknown[];durationSeconds?:number};
-export type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;onPrevious?:()=>void;onNext?:()=>void;onComplete?:(result?:JourneyCompletion)=>void|Promise<void>;completed?:boolean;timeline?:ReactNode;resourcePanel?:ReactNode};
+export type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;pathItemId?:string;shareToken?:string;onPrevious?:()=>void;onNext?:()=>void;onComplete?:(result?:JourneyCompletion)=>void|Promise<void>;completed?:boolean;timeline?:ReactNode;resourcePanel?:ReactNode};
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
@@ -31,7 +33,7 @@ export function ActivityPlayer({ activity, onClose, journey, canManageImages = f
   const [courseImages,setCourseImages] = useState(() => courseImagesFromContent(activity.content));
   const coursePages=coursePagesFromContent(activity.content);
   const sourceMedia = readSourceMedia(activity.content.sourceMedia);
-  const gradedActivity=['quiz','tv-quiz','true-false','scenario'].includes(activity.type);
+  const gradedActivity=['quiz','tv-quiz','true-false','drag-drop','matching','scenario','voice-coach'].includes(activity.type);
   const illustratedActivity={...activity,content:{...activity.content,courseImages,...(externalGame&&paperOptions?{paper:{...paperOptions}}:{})}};
   const printSupport=()=>{if(externalGame){setPaperDialogOpen(true);return;}window.print();};
   return (
@@ -76,15 +78,15 @@ function readSourceMedia(value: unknown): SourceMedia | null {
 }
 
 function Mechanic({ type, content,activity,journey }: { type: ActivityType; content: Record<string, unknown>; activity: PlayerActivity; journey?:JourneyContext }) {
-  if (type === 'quiz' || type === 'tv-quiz') return <Quiz content={content} televised={type === 'tv-quiz'} journey={journey} />;
-  if (type === 'true-false') return <TrueFalse content={content} journey={journey} />;
+  if (type === 'quiz' || type === 'tv-quiz') return <Quiz content={content} correction={activity.correction} televised={type === 'tv-quiz'} journey={journey} />;
+  if (type === 'true-false') return <TrueFalse content={content} correction={activity.correction} journey={journey} />;
   if (['flip-tiles','revision-cards','memory-cards','random-cards','pair-or-not'].includes(type)) return <Cards content={content} random={type === 'random-cards'} memory={type === 'memory-cards'} pair={type === 'pair-or-not'} />;
   if (type === 'challenge-wheel' || type === 'question-wheel') return <Wheel content={content} questionMode={type === 'question-wheel'} />;
   if (type === 'word-search') return <WordSearch content={content} />;
   if (type === 'crossword') return <Crossword content={content} />;
   if (type === 'hangman') return <Hangman content={content} />;
   if (['spell-word','ranking','unravel','anagram'].includes(type)) return <Ordering content={content} letters={type === 'spell-word' || type === 'anagram'} />;
-  if (type === 'drag-drop' || type === 'matching') return <DragDrop content={type === 'matching' ? {...content,mode:'association'} : content} />;
+  if (type === 'drag-drop' || type === 'matching') return <DragDrop type={type} content={type === 'matching' ? {...content,mode:'association'} : content} correction={activity.correction} journey={journey} />;
   if (['categories','labelled-diagram'].includes(type)) return <Classifier content={content} />;
   if (type === 'type-answer') return <TypedAnswer content={content} />;
   if (type === 'maze') return <Maze content={content} />;
@@ -93,6 +95,7 @@ function Mechanic({ type, content,activity,journey }: { type: ActivityType; cont
   if (type === 'interactive-image') return <InteractiveImage content={content} />;
   if (type === 'flying-fruits') return <FlyingFruits content={content} />;
   if (type === 'external-game') return <ExternalGame content={content} journey={journey} />;
+  if (type === 'voice-coach') return <VoiceCoach activityId={activity.id} content={content} journey={journey} />;
   return <Classifier content={content} />;
 }
 
@@ -110,26 +113,26 @@ function ExternalPaperDialog({options,onChange,onClose,onPrint}:{options:Externa
   return <div className="modal-backdrop external-paper-backdrop" role="dialog" aria-modal="true" aria-labelledby="external-paper-title"><section className="modal-card external-paper-dialog"><button className="modal-close" type="button" onClick={onClose} aria-label="Fermer">×</button><p className="overline">Version papier associée</p><h2 id="external-paper-title">Choisir le contenu du support A4.</h2><p>Le document adapte le jeu en exercice imprimable. Il ne copie pas la fenêtre externe et ne contourne aucune protection.</p><div className="external-paper-options"><label><input type="checkbox" checked={options.includeQr} onChange={(event)=>toggle('includeQr')(event.target.checked)}/>Inclure le QR code</label><label><input type="checkbox" checked={options.includeExplanations} onChange={(event)=>toggle('includeExplanations')(event.target.checked)}/>Inclure les explications</label><label><input type="checkbox" checked={options.includeAnswers} onChange={(event)=>toggle('includeAnswers')(event.target.checked)}/>Inclure les réponses</label><label><input type="checkbox" checked={options.includeCorrection} onChange={(event)=>toggle('includeCorrection')(event.target.checked)}/>Inclure le corrigé</label><label><input type="checkbox" checked={options.includeImages} onChange={(event)=>toggle('includeImages')(event.target.checked)}/>Inclure les images</label><label><input type="checkbox" checked={options.learnerVersion} onChange={(event)=>toggle('learnerVersion')(event.target.checked)}/>Version apprenant</label><label><input type="checkbox" checked={options.trainerVersion} onChange={(event)=>toggle('trainerVersion')(event.target.checked)}/>Version formateur avec solutions</label></div>{!valid&&<p className="form-message error">Choisissez au moins une version.</p>}<div className="modal-actions"><button className="button light" type="button" onClick={onClose}>Annuler</button><button className="button dark" type="button" disabled={!valid} onClick={onPrint}>Préparer l’impression / PDF</button></div></section></div>;
 }
 
-function Quiz({ content, televised = false,journey }: { content: Record<string, unknown>; televised?: boolean;journey?:JourneyContext }) {
-  const questions = (Array.isArray(content.questions) ? content.questions : []) as Array<{ question?: string; choices?: string[]; correctIndex?: number; explanation?: string }>;
-  const [index, setIndex] = useState(0); const [answer, setAnswer] = useState<number | null>(null); const [score, setScore] = useState(0); const [answers,setAnswers]=useState<number[]>([]);const[startedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false); const question = questions[index];
-  if (!question) return <EmptyMechanic />;
-  const select = (choice: number) => { if (answer !== null) return; setAnswer(choice);setAnswers((values)=>[...values,choice]); if (choice === Number(question.correctIndex ?? 0)) setScore((value) => value + 1); };
-  const next=async()=>{if(index<questions.length-1){setIndex((value)=>value+1);setAnswer(null);return;}if(journey?.onComplete){setBusy(true);try{await journey.onComplete({score,maxScore:questions.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});}finally{setBusy(false);}}else{setIndex(0);setAnswer(null);setScore(0);setAnswers([]);}};
-  return <div className={televised ? 'tv-board' : 'quiz-board'}>
-    {televised && <div className="game-strip"><span>♥ ♥ ♥</span><strong>Score {score}</strong><span>{index + 1}/{questions.length}</span></div>}
-    <p className="step-label">Question {index + 1} sur {questions.length}</p><h3>{question.question}</h3>
-    <div className="choice-grid">{(question.choices ?? []).map((choice, choiceIndex) => <button type="button" key={choice} onClick={() => select(choiceIndex)} className={answer === null ? '' : choiceIndex === Number(question.correctIndex ?? 0) ? 'correct' : answer === choiceIndex ? 'wrong' : ''}><span>{String.fromCharCode(65 + choiceIndex)}</span>{choice}</button>)}</div>
-    {answer !== null && <div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer === Number(question.correctIndex ?? 0) ? 'Bonne réponse !' : 'À revoir'}</strong>{question.explanation ? <StructuredExplanation text={question.explanation} compact /> : <p>Relisez le mini-cours puis reformulez la règle avec vos propres mots.</p>}<button className="button dark" type="button" disabled={busy||journey?.completed} onClick={()=>void next()}>{journey?.completed?'Résultat enregistré ✓':busy?'Enregistrement…':index===questions.length-1&&journey?'Enregistrer mon résultat':'Question suivante'}</button></div>}
-  </div>;
+function Quiz({ content,correction,televised=false,journey }: { content:Record<string,unknown>;correction?:string;televised?:boolean;journey?:JourneyContext }) {
+  const questions=(Array.isArray(content.questions)?content.questions:[]) as Array<{question?:string;choices?:string[];correctIndex?:number;explanation?:string}>;
+  const[index,setIndex]=useState(0);const[answer,setAnswer]=useState<number|null>(null);const[score,setScore]=useState(0);const[answers,setAnswers]=useState<number[]>([]);const[startedAt,setStartedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false);const[finished,setFinished]=useState(false);const[saved,setSaved]=useState(Boolean(journey?.completed));const question=questions[index];if(!question)return <EmptyMechanic/>;
+  const select=(choice:number)=>{if(answer!==null)return;setAnswer(choice);setAnswers((values)=>[...values,choice]);if(choice===Number(question.correctIndex??0))setScore((value)=>value+1);};
+  const next=()=>{if(index<questions.length-1){setIndex((value)=>value+1);setAnswer(null);}else setFinished(true);};
+  const save=async()=>{if(!journey?.onComplete||saved)return;setBusy(true);try{await journey.onComplete({score,maxScore:questions.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});setSaved(true);}finally{setBusy(false);}};
+  const reset=()=>{setIndex(0);setAnswer(null);setScore(0);setAnswers([]);setFinished(false);setSaved(false);setStartedAt(Date.now());};
+  if(finished)return <JourneyResultPanel title="Quiz terminé" score={score} maxScore={questions.length} correction={buildResultCorrection(televised?'tv-quiz':'quiz',content,answers,correction)} journey={journey} busy={busy} saved={saved} onSave={save} onRetry={reset}/>;
+  return <div className={televised?'tv-board':'quiz-board'}>{televised&&<div className="game-strip"><span>♥ ♥ ♥</span><strong>Score {score}</strong><span>{index+1}/{questions.length}</span></div>}<p className="step-label">Question {index+1} sur {questions.length}</p><h3>{question.question}</h3><div className="choice-grid">{(question.choices??[]).map((choice,choiceIndex)=><button type="button" key={choice} onClick={()=>select(choiceIndex)} className={answer===null?'':choiceIndex===Number(question.correctIndex??0)?'correct':answer===choiceIndex?'wrong':''}><span>{String.fromCharCode(65+choiceIndex)}</span>{choice}</button>)}</div>{answer!==null&&<div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer===Number(question.correctIndex??0)?'Bonne réponse !':'À revoir'}</strong>{question.explanation?<StructuredExplanation text={question.explanation} compact/>:<p>Relisez le mini-cours puis reformulez la règle avec vos propres mots.</p>}<button className="button dark" type="button" onClick={next}>{index===questions.length-1?'Voir mon score et le corrigé':'Question suivante'}</button></div>}</div>;
 }
 
-function TrueFalse({ content,journey }: { content: Record<string, unknown>;journey?:JourneyContext }) {
-  const statements = (Array.isArray(content.statements) ? content.statements : []) as Array<{ text?: string; answer?: boolean; explanation?: string }>;
-  const [index, setIndex] = useState(0); const [choice, setChoice] = useState<boolean | null>(null);const[score,setScore]=useState(0);const[answers,setAnswers]=useState<boolean[]>([]);const[startedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false); const item = statements[index]; if (!item) return <EmptyMechanic />;
-  const choose=(value:boolean)=>{if(choice!==null)return;setChoice(value);setAnswers((items)=>[...items,value]);if(value===Boolean(item.answer))setScore((current)=>current+1);};const next=async()=>{if(index<statements.length-1){setIndex((value)=>value+1);setChoice(null);return;}if(journey?.onComplete){setBusy(true);try{await journey.onComplete({score,maxScore:statements.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});}finally{setBusy(false);}}else{setIndex(0);setChoice(null);setScore(0);setAnswers([]);}};
-  return <div className="binary-board"><p className="step-label">Affirmation {index + 1}/{statements.length}</p><h3>{item.text}</h3><div><button type="button" onClick={() => choose(true)}>✓ Vrai</button><button type="button" onClick={() => choose(false)}>× Faux</button></div>{choice !== null && <div className="feedback-box detailed-feedback"><span className="feedback-label">Pourquoi ?</span><strong>{choice === Boolean(item.answer) ? 'Exact' : 'Pas tout à fait'}</strong>{item.explanation ? <StructuredExplanation text={item.explanation} compact /> : <p>Expliquez la règle qui permet de décider.</p>}<button className="button dark" type="button" disabled={busy||journey?.completed} onClick={()=>void next()}>{journey?.completed?'Résultat enregistré ✓':busy?'Enregistrement…':index===statements.length-1&&journey?'Enregistrer mon résultat':'Continuer'}</button></div>}</div>;
+function TrueFalse({content,correction,journey}:{content:Record<string,unknown>;correction?:string;journey?:JourneyContext}) {
+  const statements=(Array.isArray(content.statements)?content.statements:[]) as Array<{text?:string;answer?:boolean;explanation?:string}>;const[index,setIndex]=useState(0);const[choice,setChoice]=useState<boolean|null>(null);const[score,setScore]=useState(0);const[answers,setAnswers]=useState<boolean[]>([]);const[startedAt,setStartedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false);const[finished,setFinished]=useState(false);const[saved,setSaved]=useState(Boolean(journey?.completed));const item=statements[index];if(!item)return <EmptyMechanic/>;
+  const choose=(value:boolean)=>{if(choice!==null)return;setChoice(value);setAnswers((items)=>[...items,value]);if(value===Boolean(item.answer))setScore((current)=>current+1);};const next=()=>{if(index<statements.length-1){setIndex((value)=>value+1);setChoice(null);}else setFinished(true);};
+  const save=async()=>{if(!journey?.onComplete||saved)return;setBusy(true);try{await journey.onComplete({score,maxScore:statements.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});setSaved(true);}finally{setBusy(false);}};const reset=()=>{setIndex(0);setChoice(null);setScore(0);setAnswers([]);setFinished(false);setSaved(false);setStartedAt(Date.now());};
+  if(finished)return <JourneyResultPanel title="Vrai ou faux terminé" score={score} maxScore={statements.length} correction={buildResultCorrection('true-false',content,answers,correction)} journey={journey} busy={busy} saved={saved} onSave={save} onRetry={reset}/>;
+  return <div className="binary-board"><p className="step-label">Affirmation {index+1}/{statements.length}</p><h3>{item.text}</h3><div><button type="button" onClick={()=>choose(true)}>✓ Vrai</button><button type="button" onClick={()=>choose(false)}>× Faux</button></div>{choice!==null&&<div className="feedback-box detailed-feedback"><span className="feedback-label">Pourquoi ?</span><strong>{choice===Boolean(item.answer)?'Exact':'Pas tout à fait'}</strong>{item.explanation?<StructuredExplanation text={item.explanation} compact/>:<p>Expliquez la règle qui permet de décider.</p>}<button className="button dark" type="button" onClick={next}>{index===statements.length-1?'Voir mon score et le corrigé':'Continuer'}</button></div>}</div>;
 }
+
+function JourneyResultPanel({title,score,maxScore,correction,journey,busy,saved,onSave,onRetry}:{title:string;score:number;maxScore:number;correction:ResultCorrection;journey?:JourneyContext;busy:boolean;saved:boolean;onSave:()=>Promise<void>;onRetry:()=>void}) { const percentage=Math.round(score/Math.max(1,maxScore)*100);return <section className="exercise-result-panel"><header><div><p className="overline">Bilan de l’exercice</p><h3>{title}</h3><p>{percentage>=80?'Très bon résultat : consolidez vos acquis avec le corrigé.':percentage>=50?'Vous progressez : relisez les explications ciblées.':'Prenez le temps de revoir les points signalés avant de réessayer.'}</p></div><div className="exercise-result-score"><strong>{score}<small> / {maxScore} points</small></strong><span>{percentage}%</span></div></header><StructuredExplanation text={correction.summary} compact/><div className="exercise-correction-list">{correction.items.map((item,index)=><article className={item.correct?'correct':'wrong'} key={`${index}-${item.prompt}`}><header><span>{item.correct?'✓':'×'}</span><strong>{index+1}. {item.prompt}</strong></header><dl><div><dt>Votre réponse</dt><dd>{item.learnerAnswer}</dd></div><div><dt>Réponse attendue</dt><dd>{item.expectedAnswer}</dd></div></dl><p>{item.explanation}</p></article>)}</div><footer>{journey?.onComplete?<button className="button dark" type="button" disabled={busy||saved} onClick={()=>void onSave()}>{busy?'Enregistrement…':saved?'Résultat enregistré ✓':'Enregistrer le score et le corrigé'}</button>:<button className="button dark" type="button" onClick={onRetry}>Recommencer l’exercice</button>}{saved&&journey?.onNext&&<button className="button light" type="button" onClick={journey.onNext}>Activité suivante →</button>}</footer></section>;}
 
 function Cards({ content, random, memory, pair }: { content: Record<string, unknown>; random?: boolean; memory?: boolean; pair?: boolean }) {
   const cards = asItems(content.cards); const [index, setIndex] = useState(0); const [flipped, setFlipped] = useState(false); const [mastered, setMastered] = useState<string[]>([]); if (!cards.length) return <EmptyMechanic />;
@@ -173,7 +176,7 @@ function Classifier({ content }: { content: Record<string, unknown> }) {
   return <div className="classifier-board"><div><h3>Éléments</h3>{items.filter((item) => !Object.values(placements).flat().includes(label(item))).map((item,index) => <button type="button" className={selected === item ? 'selected' : ''} onClick={() => setSelected(item)} key={index}>{label(item)}</button>)}</div><div className="drop-zones">{categories.map((category,index) => <button type="button" onClick={() => place(category)} key={index}><strong>{label(category)}</strong><span>{(placements[label(category)] ?? []).join(' · ') || 'Déposer ici'}</span></button>)}</div></div>;
 }
 
-function DragDrop({ content }: { content: Record<string, unknown> }) {
+function DragDrop({type,content,correction,journey}:{type:'drag-drop'|'matching';content:Record<string,unknown>;correction?:string;journey?:JourneyContext}) {
   const game = normalizeDragDropContent(content);
   const expected = expectedItemsByTarget(game);
   const [bankOrder] = useState(() => stableDragDropOrder(game.items));
@@ -181,6 +184,8 @@ function DragDrop({ content }: { content: Record<string, unknown> }) {
   const [placements,setPlacements] = useState<Record<string,string[]>>({});
   const [checked,setChecked] = useState(false);
   const [showAnswers,setShowAnswers] = useState(false);
+  const [checkedAnswers,setCheckedAnswers]=useState<Array<{itemId:string;targetId:string}>>([]);
+  const [checkedScore,setCheckedScore]=useState(0);const[busy,setBusy]=useState(false);const[saved,setSaved]=useState(Boolean(journey?.completed));const[startedAt]=useState(()=>Date.now());
   if (!game.items.length || !game.targets.length) return <EmptyMechanic />;
 
   const placedIds = new Set(Object.values(placements).flat());
@@ -207,11 +212,13 @@ function DragDrop({ content }: { content: Record<string, unknown> }) {
     event.preventDefault();
     place(targetId,event.dataTransfer.getData('text/plain') || selectedId);
   };
+  const verify = () => { const snapshot=Object.entries(placements).flatMap(([targetId,itemIds])=>itemIds.map((itemId)=>({itemId,targetId})));setCheckedAnswers(snapshot);setCheckedScore(score);setChecked(true); };
   const revealAnswers = () => {
     setPlacements(Object.fromEntries(game.targets.map((target) => [target.id,(expected[target.id] ?? []).map((item) => item.id)])));
     setSelectedId(''); setChecked(true); setShowAnswers(true);
   };
-  const reset = () => { setPlacements({}); setSelectedId(''); setChecked(false); setShowAnswers(false); };
+  const reset = () => { setPlacements({}); setSelectedId(''); setChecked(false); setShowAnswers(false);setCheckedAnswers([]);setCheckedScore(0);setSaved(false); };
+  const save=async()=>{if(!journey?.onComplete||saved)return;setBusy(true);try{await journey.onComplete({score:checkedScore,maxScore:game.items.length,answers:checkedAnswers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});setSaved(true);}finally{setBusy(false);}};
   const modeLabel = game.mode === 'visual' ? 'Association visuelle' : game.mode === 'association' ? 'Étiquettes et définitions' : 'Classement par zones';
   const hasHotspots = game.mode === 'visual' && Boolean(game.imageUrl) && game.targets.some((target) => target.x !== undefined && target.y !== undefined);
 
@@ -259,7 +266,8 @@ function DragDrop({ content }: { content: Record<string, unknown> }) {
     <header className="drag-drop-heading"><div><span>{modeLabel}</span><h3>{game.instruction || (game.mode === 'visual' ? 'Associez chaque étiquette au bon visuel.' : 'Associez chaque étiquette à la bonne réponse.')}</h3><p>Faites glisser une étiquette ou touchez-la, puis touchez sa zone de destination.</p></div><div className="drag-progress" aria-label={`${placedCount} réponses placées sur ${game.items.length}`}><strong>{placedCount}/{game.items.length}</strong><span><i style={{width:`${placedCount / game.items.length * 100}%`}} /></span></div></header>
     <section className="drag-bank" aria-label="Étiquettes à placer"><div><strong>Étiquettes</strong><small>{selectedId ? 'Étiquette sélectionnée : choisissez maintenant une zone.' : 'Glissez ou touchez une réponse.'}</small></div><div>{bankOrder.filter((item) => !placedIds.has(item.id)).map((item) => token(item))}{placedCount === game.items.length && <p className="drag-bank-empty">Toutes les étiquettes sont placées. Vous pouvez vérifier vos réponses.</p>}</div></section>
     {hasHotspots ? <div className="drag-visual-canvas"><img src={game.imageUrl} alt="Support visuel de l’exercice" />{game.targets.map((item,index) => target(item,index,true))}</div> : <div className={game.mode === 'visual' ? 'drag-visual-grid' : 'drag-target-list'}>{game.targets.map((item,index) => target(item,index))}</div>}
-    <footer className="drag-drop-actions"><button className="button dark" type="button" disabled={placedCount !== game.items.length || checked} onClick={() => setChecked(true)}>Vérifier mes réponses</button>{checked && <><button className="button light" type="button" onClick={reset}>Réessayer</button>{!showAnswers && <button className="button light" type="button" onClick={revealAnswers}>Voir les réponses</button>}</>}<span aria-live="polite">{checked ? showAnswers ? 'Correction affichée.' : score === game.items.length ? `Bravo, ${score} réponse${score > 1 ? 's' : ''} correcte${score > 1 ? 's' : ''} sur ${game.items.length}.` : `${score} réponse${score > 1 ? 's' : ''} correcte${score > 1 ? 's' : ''} sur ${game.items.length}. Consultez les explications puis réessayez.` : `${game.items.length - placedCount} étiquette${game.items.length - placedCount > 1 ? 's' : ''} à placer.`}</span></footer>
+    <footer className="drag-drop-actions"><button className="button dark" type="button" disabled={placedCount !== game.items.length || checked} onClick={verify}>Vérifier mes réponses</button>{checked && <><button className="button light" type="button" onClick={reset}>Réessayer</button>{!showAnswers && <button className="button light" type="button" onClick={revealAnswers}>Voir les réponses</button>}{journey?.onComplete&&<button className="button dark" type="button" disabled={busy||saved} onClick={()=>void save()}>{busy?'Enregistrement…':saved?'Résultat enregistré ✓':'Enregistrer le score et le corrigé'}</button>}</>}<span aria-live="polite">{checked ? showAnswers ? 'Correction affichée.' : checkedScore === game.items.length ? `Bravo, ${checkedScore} réponse${checkedScore > 1 ? 's' : ''} correcte${checkedScore > 1 ? 's' : ''} sur ${game.items.length}.` : `${checkedScore} réponse${checkedScore > 1 ? 's' : ''} correcte${checkedScore > 1 ? 's' : ''} sur ${game.items.length}. Consultez les explications puis réessayez.` : `${game.items.length - placedCount} étiquette${game.items.length - placedCount > 1 ? 's' : ''} à placer.`}</span></footer>
+    {checked&&<section className="drag-drop-correction"><h4>Votre score : {checkedScore} / {game.items.length} points</h4><StructuredExplanation text={buildResultCorrection(type,content,checkedAnswers,correction).summary} compact/></section>}
   </div>;
 }
 
