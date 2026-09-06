@@ -23,6 +23,8 @@ test('le niveau détaillé demande un mini-cours structuré et exploite les fich
   assert.match(prompt,/## Méthode pas à pas/);
   assert.match(prompt,/fichiers sont joints/);
   assert.match(prompt,/4 à 6 phrases/);
+  assert.match(prompt,/exactement 4 choices plausibles/);
+  assert.match(prompt,/A, B, C et D/);
 });
 
 test('le contrôle accepte un quiz réellement détaillé', () => {

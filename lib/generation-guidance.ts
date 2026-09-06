@@ -63,7 +63,7 @@ ${scenarioInstruction}
 ${externalInstruction}
 
 Exigences pour les mécaniques :
-- quiz et tv-quiz : 5 à 10 questions dans questions, 3 ou 4 choices plausibles, correctIndex varié, explanation détaillée pour chaque question ;
+- quiz et tv-quiz : 5 à 10 questions dans questions, exactement 4 choices plausibles, correctIndex varié, explanation détaillée pour chaque question. Répartis équitablement les bonnes réponses entre les positions A, B, C et D : ne mets jamais toutes les bonnes réponses à la même position ;
 - true-false : 6 à 10 statements avec answer et explanation ;
 - drag-drop : crée un jeu réellement jouable selon l’un de ces deux modèles. Modèle association : content contient mode:"association", une liste items[{id,label,category,explanation}] et autant de categories[{id,label,description}] ; category référence exactement l’id de la bonne définition. Modèle visuel : content contient mode:"visual", items[{id,label,category,explanation}] et zones[{id,label,description,imageUrl facultatif,x facultatif,y facultatif}] ; category référence exactement l’id du bon visuel. Utilise des étiquettes courtes, des définitions ou visuels sans ambiguïté, 4 à 8 associations et une explication pédagogique par réponse. Si une image de fond fiable est disponible, place son URL HTTPS dans imageUrl et donne aux zones des coordonnées x/y en pourcentage ; sinon, fournis une imageUrl HTTPS par zone ou utilise le modèle association. N’invente jamais une URL d’image ;
 - matching, categories et labelled-diagram : items munis de label et category, et categories ou zones clairement nommées ;
@@ -75,7 +75,7 @@ Exigences pour les mécaniques :
 - maze : cells avec label et correct ; scenario : utilise exclusivement la structure riche scenes/debrief décrite ci-dessus, jamais l’ancien format steps ;
 - live-poll : question et options ; interactive-image : imageUrl et hotspots avec label et answer ; flying-fruits : prompts avec question et options label/correct.
 
-Place la mécanique sous forme de chaîne JSON strictement valide dans contentJson. Mélange la position des bonnes réponses. Les sources doivent provenir uniquement de la recherche web ou des documents joints.`;
+Place la mécanique sous forme de chaîne JSON strictement valide dans contentJson. Mélange réellement la position des bonnes réponses et vérifie que les quiz utilisent plusieurs positions parmi A, B, C et D. Les sources doivent provenir uniquement de la recherche web ou des documents joints.`;
 }
 
 export function validateGeneratedExplanation(draft: ActivityDraft, depthValue: unknown): string | null {
