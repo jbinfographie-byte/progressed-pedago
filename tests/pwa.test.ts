@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8')) as Record<string, unknown>;
 const serviceWorker = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../components/progressed-app.tsx', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
 
 test('le manifeste permet une installation autonome avec des icônes adaptées', () => {
   assert.equal(manifest.name, 'Progressed Pédago');
@@ -17,4 +19,9 @@ test('le manifeste permet une installation autonome avec des icônes adaptées',
 test('le service worker ne met pas en cache les pages privées ni les API', () => {
   assert.match(serviceWorker, /INSTALL_ASSETS\.includes\(url\.pathname\)/);
   assert.doesNotMatch(serviceWorker, /\/api\//);
+});
+
+test('l’installation est proposée dans la navigation sans bouton flottant', () => {
+  assert.match(appSource, /<nav aria-label="Navigation principale">[\s\S]*<InstallApp \/>[\s\S]*<\/nav>/);
+  assert.doesNotMatch(styles, /\.install-app-trigger\s*\{[^}]*position:\s*fixed/);
 });

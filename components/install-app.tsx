@@ -56,9 +56,9 @@ export function InstallApp() {
   };
 
   return <>
-    <button className="install-app-trigger" type="button" onClick={() => void install()} aria-haspopup="dialog">
-      <span aria-hidden="true">P</span>
-      Installer l’application
+    <button className="nav-item install-app-trigger" type="button" onClick={() => void install()} aria-haspopup="dialog">
+      <span className="nav-icon" aria-hidden="true">⇩</span>
+      <span>Installer l’application</span>
     </button>
     {showGuide && <div className="install-app-backdrop" role="dialog" aria-modal="true" aria-labelledby="install-app-title">
       <section className="install-app-dialog">
