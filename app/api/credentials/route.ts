@@ -2,16 +2,16 @@ import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { encryptedApiCredentials } from '@/db/schema';
-import { audit, requirePermission } from '@/lib/auth';
+import { audit, requirePermission, requireUser } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { encryptSecret } from '@/lib/security';
-import { safeOpenAiModel } from '@/lib/ai-security';
+import { getOpenAiConnectionOverview, safeOpenAiModel } from '@/lib/ai-security';
 
 export async function GET() {
   try {
-    const user = await requirePermission('manageAiConnection');
-    const credential = (await getDb().select({ lastFour: encryptedApiCredentials.lastFour, model: encryptedApiCredentials.model, validatedAt: encryptedApiCredentials.validatedAt }).from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
-    return jsonOk({ connected: Boolean(credential || env.OPENAI_API_KEY), connectionMode: credential ? 'personal' : env.OPENAI_API_KEY ? 'platform' : 'none', credential: credential ?? null });
+    const user = await requireUser();
+    const overview = await getOpenAiConnectionOverview(user.id);
+    return jsonOk({ ...overview, canManagePersonalConnection: user.permissions.manageAiConnection });
   } catch (error) { return jsonError(error); }
 }
 

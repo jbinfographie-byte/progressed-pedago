@@ -7,6 +7,14 @@ export const AI_SECURITY_DEFAULTS = {
 };
 
 export type AiSecuritySettings = typeof AI_SECURITY_DEFAULTS;
+export type OpenAiCredentialSource = 'personal' | 'platform' | 'administrator';
+
+export function chooseOpenAiCredentialSource(input: { hasPersonal: boolean; hasPlatform: boolean; hasAdministrator: boolean }): OpenAiCredentialSource | null {
+  if (input.hasPersonal) return 'personal';
+  if (input.hasPlatform) return 'platform';
+  if (input.hasAdministrator) return 'administrator';
+  return null;
+}
 
 export function normalizeAiSecuritySettings(value: Partial<AiSecuritySettings> = {}): AiSecuritySettings {
   const bounded = (candidate: unknown, fallback: number, max: number) => Number.isFinite(Number(candidate)) ? Math.min(max, Math.max(1, Math.round(Number(candidate)))) : fallback;

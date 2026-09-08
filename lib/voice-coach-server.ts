@@ -1,9 +1,11 @@
 import { AppError } from './http.ts';
 import { normalizeVoiceCoachContent, voiceCoachInstructions } from './voice-coach.ts';
 
+export const VOICE_REALTIME_MODEL='gpt-realtime';
+
 export async function createVoiceCoachClientSecret(apiKey:string,content:unknown,safetyIdentifier:string,transcribe:boolean) {
   const config=normalizeVoiceCoachContent(content);
-  const response=await fetch('https://api.openai.com/v1/realtime/client_secrets',{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','OpenAI-Safety-Identifier':safetyIdentifier},body:JSON.stringify({session:{type:'realtime',model:'gpt-realtime-2.1',instructions:voiceCoachInstructions(config),output_modalities:['audio'],audio:{input:{...(transcribe?{transcription:{model:'gpt-4o-mini-transcribe'}}:{}),turn_detection:{type:'semantic_vad',create_response:true,interrupt_response:true}},output:{voice:config.voice}}}}),signal:AbortSignal.timeout(20_000)});
+  const response=await fetch('https://api.openai.com/v1/realtime/client_secrets',{method:'POST',headers:{Authorization:`Bearer ${apiKey}`,'Content-Type':'application/json','OpenAI-Safety-Identifier':safetyIdentifier},body:JSON.stringify({session:{type:'realtime',model:VOICE_REALTIME_MODEL,instructions:voiceCoachInstructions(config),output_modalities:['audio'],audio:{input:{...(transcribe?{transcription:{model:'gpt-4o-mini-transcribe'}}:{}),turn_detection:{type:'semantic_vad',create_response:true,interrupt_response:true}},output:{voice:config.voice}}}}),signal:AbortSignal.timeout(20_000)});
   const payload=await response.json() as {value?:string;expires_at?:number;client_secret?:{value?:string;expires_at?:number};error?:{code?:string;message?:string}};
   if(!response.ok)throw voiceCoachOpenAIError(response.status,payload.error?.code,payload.error?.message);
   const value=payload.value??payload.client_secret?.value;if(!value)throw new AppError(502,'OpenAI n’a pas fourni de clé de session vocale. Réessayez.','REALTIME_SECRET_EMPTY');
