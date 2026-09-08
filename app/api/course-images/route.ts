@@ -1,12 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, courseFolders, encryptedApiCredentials, learningPathItems, learningPaths, uploadedFiles } from '@/db/schema';
+import { activities, courseFolders, learningPathItems, learningPaths, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { buildCourseImagePrompt, courseImagesFromContent, imageUrl, resolveAutomaticPlacement, withCourseImages, COURSE_IMAGE_PLACEMENTS, type CourseImage, type CourseImagePlacement, type CourseImageSource, type CourseImageStyle } from '@/lib/course-images';
 import { coursePagesFromContent, type CoursePage } from '@/lib/course-pages';
-import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
-import { decryptSecret } from '@/lib/security';
+import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
+import { readAiJson, resolveOpenAiCredential } from '@/lib/ai-security';
 import type { ActivityType } from '@/lib/activity-types';
 import { preflightAiUsage } from '@/lib/subscriptions-server';
 
@@ -38,9 +38,8 @@ export async function POST(request:Request) {
       if(!file) throw new AppError(400,'Choisissez une image PNG ou JPEG.','IMAGE_REQUIRED');
       const uploaded=await readUploadedImage(file); bytes=uploaded.bytes; mimeType=uploaded.mimeType; source='upload';
     } else {
-      assertPermission(user,'useAi'); await preflightAiUsage(user.id,user.role,'textAi'); const credential=(await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId,user.id)).limit(1))[0];
-      if(!credential) throw new AppError(409,'Connectez d’abord votre clé OpenAI personnelle dans Connexions.','OPENAI_NOT_CONNECTED');
-      const apiKey=await decryptSecret(credential.ciphertext,credential.iv,env.MASTER_ENCRYPTION_KEY);
+      assertPermission(user,'useAi'); await preflightAiUsage(user.id,user.role,'textAi'); const credential=await resolveOpenAiCredential(user.id);
+      const apiKey=credential.apiKey;
       if(values.mode==='ai') bytes=await generateImage(apiKey,finalPrompt);
       else {
         const document=await ownedDocument(values.sourceFileId,user.id); source='document'; sourceFileId=document.id; sourcePage=values.sourcePage||undefined;
@@ -72,7 +71,7 @@ export async function POST(request:Request) {
 async function parseImageRequest(request:Request):Promise<{values:ImageRequest;file:File|null}> {
   const multipart=(request.headers.get('content-type')??'').includes('multipart/form-data'); let raw:Record<string,unknown>; let file:File|null=null;
   if(multipart) { const form=await request.formData(); const entry=form.get('file'); file=entry instanceof File?entry:null; raw=Object.fromEntries([...form.entries()].filter(([key])=>key!=='file').map(([key,value])=>[key,String(value)])); }
-  else raw=await readJson(request);
+  else raw=await readAiJson(request);
   const mode=String(raw.mode??'ai');
   if(!['upload','ai','document-use','document-crop','document-inspired'].includes(mode)) throw new AppError(400,'Cette source d’image n’est pas reconnue.','INVALID_IMAGE_MODE');
   const activityId=cleanText(raw.activityId,80); if(!activityId) throw new AppError(400,'L’activité à illustrer est obligatoire.','ACTIVITY_REQUIRED');

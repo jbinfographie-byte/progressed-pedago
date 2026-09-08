@@ -5,12 +5,13 @@ import { encryptedApiCredentials } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { encryptSecret } from '@/lib/security';
+import { safeOpenAiModel } from '@/lib/ai-security';
 
 export async function GET() {
   try {
     const user = await requirePermission('manageAiConnection');
     const credential = (await getDb().select({ lastFour: encryptedApiCredentials.lastFour, model: encryptedApiCredentials.model, validatedAt: encryptedApiCredentials.validatedAt }).from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
-    return jsonOk({ connected: Boolean(credential), credential: credential ?? null });
+    return jsonOk({ connected: Boolean(credential || env.OPENAI_API_KEY), connectionMode: credential ? 'personal' : env.OPENAI_API_KEY ? 'platform' : 'none', credential: credential ?? null });
   } catch (error) { return jsonError(error); }
 }
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     const user = await requirePermission('manageAiConnection');
     const body = await readJson(request);
     const apiKey = String(body.apiKey ?? '').trim();
-    const model = String(body.model ?? env.OPENAI_MODEL ?? 'gpt-5.5').trim();
+    const model = safeOpenAiModel(body.model);
     if (!/^sk-[A-Za-z0-9_-]{20,}$/.test(apiKey)) throw new AppError(400, 'La clé OpenAI ne présente pas un format valide.', 'INVALID_API_KEY_FORMAT');
     const response = await fetch('https://api.openai.com/v1/responses', { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model, input: 'Réponds uniquement par OK.', max_output_tokens: 16, store: false }) });
     if (!response.ok) {

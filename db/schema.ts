@@ -661,3 +661,112 @@ export const loginAttempts = sqliteTable('login_attempts', {
 export const appSettings = sqliteTable('pedago_app_settings', {
   key: text('key').primaryKey(), valueJson: text('value_json').notNull(), updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }), updatedAt: integer('updated_at').notNull().default(now),
 });
+
+export const helpArticles = sqliteTable('help_articles', {
+  id: text('id').primaryKey(),
+  slug: text('slug').notNull(),
+  title: text('title').notNull(),
+  category: text('category').notNull(),
+  summary: text('summary').notNull().default(''),
+  content: text('content').notNull(),
+  keywordsJson: text('keywords_json').notNull().default('[]'),
+  feature: text('feature').notNull().default('general'),
+  plansJson: text('plans_json').notNull().default('[]'),
+  mediaUrl: text('media_url').notNull().default(''),
+  published: integer('published', { mode: 'boolean' }).notNull().default(false),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_help_articles_slug').on(table.slug),
+  index('idx_help_articles_published_feature').on(table.published, table.feature, table.updatedAt),
+]);
+
+export const supportTickets = sqliteTable('support_tickets', {
+  id: text('id').primaryKey(),
+  reference: text('reference').notNull(),
+  requesterId: text('requester_id').references(() => users.id, { onDelete: 'set null' }),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  email: text('email').notNull(),
+  organization: text('organization').notNull().default(''),
+  category: text('category').notNull(),
+  subject: text('subject').notNull(),
+  description: text('description').notNull(),
+  urgency: text('urgency', { enum: ['normal', 'important', 'urgent'] }).notNull().default('normal'),
+  status: text('status', { enum: ['new', 'waiting', 'in_progress', 'answered', 'resolved', 'urgent', 'closed'] }).notNull().default('new'),
+  priority: text('priority', { enum: ['low', 'normal', 'high', 'critical'] }).notNull().default('normal'),
+  pageUrl: text('page_url').notNull().default(''),
+  browserInfo: text('browser_info').notNull().default(''),
+  planName: text('plan_name').notNull().default(''),
+  internalNote: text('internal_note').notNull().default(''),
+  assignedTo: text('assigned_to').references(() => users.id, { onDelete: 'set null' }),
+  consentedAt: integer('consented_at').notNull(),
+  resolvedAt: integer('resolved_at'),
+  closedAt: integer('closed_at'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_support_tickets_reference').on(table.reference),
+  index('idx_support_tickets_requester_date').on(table.requesterId, table.createdAt),
+  index('idx_support_tickets_status_priority').on(table.status, table.priority, table.updatedAt),
+]);
+
+export const supportMessages = sqliteTable('support_messages', {
+  id: text('id').primaryKey(),
+  ticketId: text('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+  authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
+  authorRole: text('author_role', { enum: ['requester', 'support'] }).notNull(),
+  message: text('message').notNull(),
+  internal: integer('internal', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [index('idx_support_messages_ticket_date').on(table.ticketId, table.createdAt)]);
+
+export const supportAttachments = sqliteTable('support_attachments', {
+  id: text('id').primaryKey(),
+  ticketId: text('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
+  objectKey: text('object_key').notNull(),
+  originalName: text('original_name').notNull(),
+  mimeType: text('mime_type', { enum: ['image/png', 'image/jpeg', 'application/pdf'] }).notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_support_attachments_object_key').on(table.objectKey),
+  index('idx_support_attachments_ticket').on(table.ticketId, table.createdAt),
+  check('ck_support_attachments_size', sql`${table.sizeBytes} BETWEEN 1 AND 5242880`),
+]);
+
+export const salesLeads = sqliteTable('sales_leads', {
+  id: text('id').primaryKey(),
+  reference: text('reference').notNull(),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  organization: text('organization').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone').notNull().default(''),
+  trainerCount: integer('trainer_count').notNull().default(0),
+  learnerCount: integer('learner_count').notNull().default(0),
+  primaryNeed: text('primary_need').notNull(),
+  planInterest: text('plan_interest', { enum: ['essential', 'coach', 'intensive', 'undecided'] }).notNull().default('undecided'),
+  wantsDemo: integer('wants_demo', { mode: 'boolean' }).notNull().default(false),
+  wantsQuote: integer('wants_quote', { mode: 'boolean' }).notNull().default(false),
+  wantsCallback: integer('wants_callback', { mode: 'boolean' }).notNull().default(false),
+  preferredTime: text('preferred_time').notNull().default(''),
+  message: text('message').notNull().default(''),
+  status: text('status', { enum: ['new', 'callback', 'demo', 'quote', 'proposal', 'follow_up', 'accepted', 'refused'] }).notNull().default('new'),
+  internalNote: text('internal_note').notNull().default(''),
+  consentedAt: integer('consented_at').notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_sales_leads_reference').on(table.reference),
+  index('idx_sales_leads_status_date').on(table.status, table.updatedAt),
+]);
+
+export const publicSubmissionEvents = sqliteTable('public_submission_events', {
+  id: text('id').primaryKey(),
+  fingerprint: text('fingerprint').notNull(),
+  kind: text('kind', { enum: ['support', 'sales'] }).notNull(),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [index('idx_public_submission_fingerprint_date').on(table.fingerprint, table.createdAt)]);

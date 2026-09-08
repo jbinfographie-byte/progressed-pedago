@@ -1,10 +1,11 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { creditTransactions, subscriptionEvents, subscriptionPlans, userFeatureOverrides, userSubscriptions, users } from '@/db/schema';
+import { appSettings, creditTransactions, subscriptionEvents, subscriptionPlans, userFeatureOverrides, userSubscriptions, users } from '@/db/schema';
 import { audit, requireAdmin } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { isPlanId, normalizeCreditCosts, normalizePlanFeatures, SUBSCRIPTION_FEATURES, type SubscriptionFeature } from '@/lib/subscriptions';
 import { ensurePlanCatalog, ensureUserSubscription, getUserEntitlement, recentUsage } from '@/lib/subscriptions-server';
+import { getAiSecuritySettings } from '@/lib/ai-security';
 
 export async function GET() {
   try {
@@ -35,7 +36,7 @@ export async function GET() {
       summary.byPlan[member.entitlement.planId] = (summary.byPlan[member.entitlement.planId] ?? 0) + 1;
       return summary;
     }, { users: 0, active: 0, suspended: 0, voiceSeconds: 0, apiCostMicros: 0, creditsUsed: 0, nearLimit: 0, byPlan: {} as Record<string, number> });
-    return jsonOk({ plans: planRows.map((plan) => ({ ...plan, features: normalizePlanFeatures(plan.featuresJson), creditCosts: normalizeCreditCosts(plan.creditCostsJson) })), members, totals });
+    return jsonOk({ plans: planRows.map((plan) => ({ ...plan, features: normalizePlanFeatures(plan.featuresJson), creditCosts: normalizeCreditCosts(plan.creditCostsJson) })), members, totals, aiSecurity: await getAiSecuritySettings() });
   } catch (error) { return jsonError(error); }
 }
 
@@ -43,6 +44,14 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request); const admin = await requireAdmin(); const body = await readJson(request);
     const action = String(body.action ?? ''); const userId = String(body.userId ?? ''); const now = Math.floor(Date.now() / 1000);
+    if (action === 'update_ai_security') {
+      const bounded = (value: unknown, fallback: number, maximum: number) => Number.isFinite(Number(value)) ? Math.min(maximum, Math.max(1, Math.round(Number(value)))) : fallback;
+      const current = await getAiSecuritySettings();
+      const settings = { requestsPerMinute: bounded(body.requestsPerMinute,current.requestsPerMinute,120), requestsPerDay: bounded(body.requestsPerDay,current.requestsPerDay,10_000), globalRequestsPerDay: bounded(body.globalRequestsPerDay,current.globalRequestsPerDay,100_000), globalDailyBudgetMicros: bounded(body.globalDailyBudgetMicros,current.globalDailyBudgetMicros,2_000_000_000), maxJsonBytes: bounded(body.maxJsonBytes,current.maxJsonBytes,1_000_000) };
+      await getDb().insert(appSettings).values({key:'ai_security',valueJson:JSON.stringify(settings),updatedBy:admin.id,updatedAt:now}).onConflictDoUpdate({target:appSettings.key,set:{valueJson:JSON.stringify(settings),updatedBy:admin.id,updatedAt:now}});
+      await audit(admin.id,'admin.updated_ai_security','app_setting','ai_security',settings,request);
+      return jsonOk({message:'Les protections globales de l’IA ont été enregistrées.'});
+    }
     if (action === 'update_plan_config') {
       const planId = body.planId; if (!isPlanId(planId)) throw new AppError(400, 'Formule inconnue.', 'PLAN_INVALID');
       const current = (await getDb().select().from(subscriptionPlans).where(eq(subscriptionPlans.id, planId)).limit(1))[0];

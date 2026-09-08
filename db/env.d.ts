@@ -7,6 +7,7 @@ declare namespace Cloudflare {
     INITIAL_ADMIN_EMAIL?: string;
     INITIAL_ADMIN_BOOTSTRAP_TOKEN?: string;
     OPENAI_MODEL?: string;
+    OPENAI_API_KEY?: string;
     RESEND_API_KEY?: string;
     RESEND_FROM_EMAIL?: string;
     NEXT_PUBLIC_SITE_URL?: string;

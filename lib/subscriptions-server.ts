@@ -2,6 +2,7 @@ import { and, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { aiUsageEvents, creditTransactions, subscriptionPlans, userFeatureOverrides, userSubscriptions } from '@/db/schema';
 import { AppError } from '@/lib/http';
+import { getAiSecuritySettings } from '@/lib/ai-security';
 import {
   DEFAULT_PLAN_CONFIGURATIONS,
   dayKey,
@@ -86,10 +87,19 @@ export async function assertSubscriptionFeature(userId: string, role: 'admin' | 
 
 export async function preflightAiUsage(userId: string, role: 'admin' | 'trainer', feature: SubscriptionFeature, options: { voice?: boolean; minimumCredits?: number } = {}) {
   const entitlement = await assertSubscriptionFeature(userId, role, feature);
-  if (entitlement.subscription.unlimited) return entitlement;
   const now = Math.floor(Date.now() / 1000);
-  const recent = await getDb().select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, userId), gt(aiUsageEvents.createdAt, now - 60))).limit(31);
-  if (recent.length >= 30) throw new AppError(429, 'Trop de demandes ont été envoyées. Patientez une minute avant de réessayer.', 'AI_RATE_LIMIT');
+  const settings = await getAiSecuritySettings();
+  const [recent, daily, globalDaily, globalCost] = await Promise.all([
+    getDb().select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, userId),eq(aiUsageEvents.status,'started'), gt(aiUsageEvents.createdAt, now - 60))).limit(settings.requestsPerMinute + 1),
+    getDb().select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, userId),eq(aiUsageEvents.status,'started'), gt(aiUsageEvents.createdAt, now - 86_400))).limit(settings.requestsPerDay + 1),
+    getDb().select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(and(eq(aiUsageEvents.status,'started'),gt(aiUsageEvents.createdAt, now - 86_400))).limit(settings.globalRequestsPerDay + 1),
+    getDb().select({ total: sql<number>`coalesce(sum(coalesce(${aiUsageEvents.actualCostMicros}, ${aiUsageEvents.estimatedCostMicros})), 0)` }).from(aiUsageEvents).where(gt(aiUsageEvents.createdAt, now - 86_400)),
+  ]);
+  if (recent.length >= settings.requestsPerMinute) throw new AppError(429, 'Trop de demandes ont été envoyées. Patientez une minute avant de réessayer.', 'AI_RATE_LIMIT');
+  if (daily.length >= settings.requestsPerDay) throw new AppError(429, 'Votre limite d’utilisation pour aujourd’hui est atteinte. Vous pourrez réessayer demain.', 'AI_DAILY_LIMIT_REACHED');
+  if (globalDaily.length >= settings.globalRequestsPerDay || Number(globalCost[0]?.total ?? 0) >= settings.globalDailyBudgetMicros) throw new AppError(503, 'Les fonctions IA sont temporairement en pause par mesure de sécurité. Les contenus déjà créés restent disponibles.', 'AI_GLOBAL_SAFETY_LIMIT');
+  await getDb().insert(aiUsageEvents).values({ id: crypto.randomUUID(), userId, feature: `${feature}_request`, status: 'started', requestId: `preflight:${crypto.randomUUID()}`, metadataJson: JSON.stringify({ voice: options.voice === true }), createdAt: now });
+  if (entitlement.subscription.unlimited) return entitlement;
   if (entitlement.creditsAvailable < (options.minimumCredits ?? 1)) throw new AppError(429, 'Votre solde de crédits IA est épuisé. Les contenus déjà créés restent disponibles.', 'AI_CREDITS_EXHAUSTED');
   if (entitlement.apiBudgetMicros > 0 && entitlement.subscription.apiCostMicrosMonth >= entitlement.apiBudgetMicros) throw new AppError(429, 'La limite mensuelle des fonctions IA dynamiques est atteinte. Les cours et exercices déjà créés restent disponibles.', 'AI_BUDGET_REACHED');
   if (options.voice && (entitlement.subscription.voiceSecondsMonth >= entitlement.monthlyVoiceLimit || entitlement.subscription.voiceSecondsDay >= entitlement.dailyVoiceLimit)) throw new AppError(429, 'Votre quota vocal est atteint. Vous pouvez continuer en mode texte jusqu’au renouvellement.', 'VOICE_QUOTA_REACHED');

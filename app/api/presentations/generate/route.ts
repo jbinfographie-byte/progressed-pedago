@@ -1,12 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { encryptedApiCredentials, uploadedFiles } from '@/db/schema';
+import { uploadedFiles } from '@/db/schema';
 import { audit, requirePermission } from '@/lib/auth';
-import { AppError, assertSameOrigin, jsonError, readJson } from '@/lib/http';
+import { AppError, assertSameOrigin, jsonError } from '@/lib/http';
 import { createPowerPoint, safePresentationFilename, type PresentationDeck } from '@/lib/pptx';
 import { normalizeSourceKind, resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
-import { decryptSecret } from '@/lib/security';
+import { readAiJson, resolveOpenAiCredential } from '@/lib/ai-security';
 import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
 import { preflightAiUsage } from '@/lib/subscriptions-server';
 
@@ -14,15 +14,13 @@ type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: s
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requirePermission('useAi'); await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:5}); const body = await readJson(request);
+    assertSameOrigin(request); const user = await requirePermission('useAi'); await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:5}); const body = await readAiJson(request);
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds.map(String).slice(0,5) : [];
     const kind = normalizeSourceKind(body.sourceKind);
     if (kind === 'documents' && !fileIds.length) throw new AppError(400,'Ajoutez au moins un PDF ou un document pour créer la présentation.','PRESENTATION_DOCUMENT_REQUIRED');
     const rawPrompt = String(body.prompt ?? '').trim();
     if (kind === 'prompt' && rawPrompt.length < 15 && !fileIds.length) throw new AppError(400,'Décrivez le PowerPoint souhaité, ajoutez un document ou fournissez un lien.','PRESENTATION_SOURCE_REQUIRED');
-    const credential = (await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId,user.id)).limit(1))[0];
-    if (!credential) throw new AppError(409,'Connectez d’abord votre clé OpenAI personnelle dans Connexions.','OPENAI_NOT_CONNECTED');
-    const apiKey = await decryptSecret(credential.ciphertext,credential.iv,env.MASTER_ENCRYPTION_KEY);
+    const credential = await resolveOpenAiCredential(user.id); const apiKey = credential.apiKey;
     const source = await resolveSourceMaterial(body,{transcribeMedia:(media) => transcribeMediaWithOpenAI(apiKey,media)});
     if (rawPrompt.length < 15 && !source && !fileIds.length) throw new AppError(400,'Décrivez le PowerPoint souhaité, ajoutez un document ou fournissez un lien.','PRESENTATION_SOURCE_REQUIRED');
     const prompt = rawPrompt || 'Construis une présentation de formation claire à partir de la source fournie, avec une progression pédagogique, des exemples et une synthèse applicable.';

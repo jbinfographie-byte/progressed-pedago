@@ -1,10 +1,10 @@
 import { env } from 'cloudflare:workers';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { encryptedApiCredentials, uploadedFiles } from '@/db/schema';
+import { uploadedFiles } from '@/db/schema';
 import { assertPermission, requirePermission } from '@/lib/auth';
-import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
-import { decryptSecret } from '@/lib/security';
+import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
+import { readAiJson, resolveOpenAiCredential } from '@/lib/ai-security';
 import { extractExternalGameUrl, providerFromExternalGameUrl, providerLabel } from '@/lib/external-games';
 import { resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
 import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
@@ -33,15 +33,13 @@ export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
     const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:2});
-    const body = await readJson(request);
+    const body = await readAiJson(request);
     const sourceUrl = extractExternalGameUrl(String(body.sourceUrl ?? body.embedUrl ?? ''));
     if (!sourceUrl) throw new AppError(400, 'Ajoutez d’abord un lien HTTPS ou un code iframe valide.', 'EXTERNAL_GAME_URL_REQUIRED');
 
     const supportText = [body.description,body.supportText,body.transcript].map((value)=>String(value ?? '').trim()).filter(Boolean).join('\n\n').slice(0,60_000);
     const supportFileIds = [...new Set(Array.isArray(body.supportFileIds) ? body.supportFileIds.map(String).filter(Boolean) : [])].slice(0,6);
-    const credential = (await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
-    if (!credential) throw new AppError(409, 'Connectez d’abord votre clé OpenAI personnelle dans Connexions.', 'OPENAI_NOT_CONNECTED');
-    const apiKey = await decryptSecret(credential.ciphertext, credential.iv, env.MASTER_ENCRYPTION_KEY);
+    const credential = await resolveOpenAiCredential(user.id); const apiKey = credential.apiKey;
 
     const files = supportFileIds.length ? await getDb().select().from(uploadedFiles).where(and(eq(uploadedFiles.trainerId,user.id),inArray(uploadedFiles.id,supportFileIds))) : [];
     if (files.length !== supportFileIds.length) throw new AppError(404,'Une pièce d’appui est introuvable. Réimportez-la puis relancez l’analyse.','EXTERNAL_SUPPORT_FILE_NOT_FOUND');

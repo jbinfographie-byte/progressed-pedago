@@ -1,11 +1,10 @@
-import { env } from 'cloudflare:workers';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { documentPages, encryptedApiCredentials, generationJobs, scenarioProjects, uploadedFiles } from '@/db/schema';
+import { documentPages, generationJobs, scenarioProjects, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { buildKnowledgeContext, findOpenAIOutputText, rankKnowledgePages, scenarioBriefSchema, type ScenarioBrief } from '@/lib/document-knowledge';
-import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
-import { decryptSecret } from '@/lib/security';
+import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
+import { readAiJson, resolveOpenAiCredential } from '@/lib/ai-security';
 import { preflightAiUsage } from '@/lib/subscriptions-server';
 
 type OpenAIResponse = { output?: unknown[]; error?: { code?: string } };
@@ -19,7 +18,7 @@ export async function POST(request: Request) {
     assertPermission(user, 'useAi');
     await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:5});
     trainerId = user.id;
-    const body = await readJson(request);
+    const body = await readAiJson(request);
     const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8);
     if (!fileIds.length) throw new AppError(400, 'Sélectionnez au moins un document analysé.', 'DOCUMENT_REQUIRED');
     const db = getDb();
@@ -36,9 +35,7 @@ export async function POST(request: Request) {
     const rows = rankKnowledgePages(selectedRows,files.map((file) => `${file.detectedTheme ?? ''} ${file.summary ?? ''}`).join(' '),50);
     const context = buildKnowledgeContext(rows);
     if (context.length < 200) throw new AppError(422, 'Les pages sélectionnées ne contiennent pas encore assez d’informations fiables. Vérifiez leur analyse ou sélectionnez d’autres pages.', 'DOCUMENT_CONTENT_INSUFFICIENT');
-    const credential = (await db.select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
-    if (!credential) throw new AppError(409, 'Connectez d’abord votre clé OpenAI personnelle dans Connexions.', 'OPENAI_NOT_CONNECTED');
-    const apiKey = await decryptSecret(credential.ciphertext, credential.iv, env.MASTER_ENCRYPTION_KEY);
+    const credential = await resolveOpenAiCredential(user.id); const apiKey = credential.apiKey;
     const now = Math.floor(Date.now() / 1000);
     const projectId = crypto.randomUUID();
     jobId = crypto.randomUUID();

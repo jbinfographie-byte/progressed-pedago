@@ -1,12 +1,12 @@
 import { env } from 'cloudflare:workers';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, activityContents, courseFolderFiles, courseFolders, documentActivityLinks, documentPages, encryptedApiCredentials, learningPathItems, learningPaths, mainFolders, scenarioChoices, scenarioProjects, scenarioScenes, sourceCitations, uploadedFiles } from '@/db/schema';
+import { activities, activityContents, courseFolderFiles, courseFolders, documentActivityLinks, documentPages, learningPathItems, learningPaths, mainFolders, scenarioChoices, scenarioProjects, scenarioScenes, sourceCitations, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { ActivityDraft, ActivityType, isCreatableActivityType, validateActivityDraft } from '@/lib/activity-types';
 import { buildKnowledgeContext, rankKnowledgePages } from '@/lib/document-knowledge';
-import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
-import { decryptSecret } from '@/lib/security';
+import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
+import { readAiJson, resolveOpenAiCredential } from '@/lib/ai-security';
 import { buildGenerationPrompt, validateGeneratedExplanation } from '@/lib/generation-guidance';
 import { normalizeSourceKind, resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
 import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
@@ -19,7 +19,7 @@ type OpenAIResponse = { id?: string; output?: unknown[]; usage?: { input_tokens?
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); await preflightAiUsage(user.id,user.role,'textAi'); const body = await readJson(request); const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8); const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
+    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); await preflightAiUsage(user.id,user.role,'textAi'); const body = await readAiJson(request); const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8); const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
     const mainFolderId = String(body.mainFolderId ?? '').trim();
     const targetTheme = mainFolderId ? (await getDb().select().from(mainFolders).where(and(eq(mainFolders.id,mainFolderId),eq(mainFolders.trainerId,user.id))).limit(1))[0] : null;
     if (mainFolderId && !targetTheme) throw new AppError(404,'Le dossier métier ou thématique choisi est introuvable.','MAIN_FOLDER_NOT_FOUND');
@@ -28,9 +28,7 @@ export async function POST(request: Request) {
     const requested = Array.isArray(body.formats) ? body.formats.map(String) : [String(body.type ?? 'quiz')];
     const formats = [...new Set(requested)].filter((type): type is ActivityType => isCreatableActivityType(type)).slice(0, 4);
     if (!formats.length) throw new AppError(400, 'Choisissez un quiz, un glisser-déposer, un vrai ou faux ou une mise en situation.', 'NO_FORMAT');
-    const credential = (await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
-    if (!credential) throw new AppError(409, 'Connectez d’abord votre clé OpenAI personnelle dans Connexions.', 'OPENAI_NOT_CONNECTED');
-    const apiKey = await decryptSecret(credential.ciphertext, credential.iv, env.MASTER_ENCRYPTION_KEY);
+    const credential = await resolveOpenAiCredential(user.id); const apiKey = credential.apiKey;
     const source = await resolveSourceMaterial(body,{transcribeMedia:(media) => transcribeMediaWithOpenAI(apiKey,media)});
     if (rawPrompt.length < 15 && !source && !fileIds.length) throw new AppError(400, 'Décrivez le cours souhaité, ajoutez un document ou fournissez un lien.', 'PROMPT_TOO_SHORT');
     const prompt = rawPrompt || 'Crée un cours complet et une activité pédagogique à partir de la source fournie, avec des exemples professionnels et des corrections détaillées.';

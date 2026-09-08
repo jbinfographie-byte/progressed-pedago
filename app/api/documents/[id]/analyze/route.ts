@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:workers';
 import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { documentChunks, documentIndexes, documentPages, encryptedApiCredentials, generationJobs, uploadedFiles } from '@/db/schema';
+import { documentChunks, documentIndexes, documentPages, generationJobs, uploadedFiles } from '@/db/schema';
 import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { arrayBufferToBase64, documentAnalysisSchema, findOpenAIOutputText, normalizeDocumentAnalysis } from '@/lib/document-knowledge';
 import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
-import { decryptSecret } from '@/lib/security';
+import { resolveOpenAiCredential } from '@/lib/ai-security';
 import { preflightAiUsage } from '@/lib/subscriptions-server';
 
 type OpenAIResponse = { output?: unknown[]; error?: { code?: string } };
@@ -28,8 +28,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const previous = await db.select().from(generationJobs).where(and(eq(generationJobs.trainerId, user.id), eq(generationJobs.fileId, fileId), eq(generationJobs.kind, 'document_analysis'))).orderBy(desc(generationJobs.createdAt)).limit(3);
     const attempt = (previous[0]?.attempt ?? 0) + 1;
     if (attempt > 3 && file.status === 'failed') throw new AppError(429, 'Trois analyses ont échoué. Vérifiez le document ou importez une version plus lisible avant de réessayer.', 'DOCUMENT_RETRY_LIMIT');
-    const credential = (await db.select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)).limit(1))[0];
-    if (!credential) throw new AppError(409, 'Connectez d’abord votre clé OpenAI personnelle dans Connexions.', 'OPENAI_NOT_CONNECTED');
+    const credential = await resolveOpenAiCredential(user.id);
 
     jobId = crypto.randomUUID();
     const now = Math.floor(Date.now() / 1000);
@@ -45,7 +44,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const content = file.mimeType.startsWith('image/')
       ? [{ type: 'input_text', text: 'Analyse cette image comme une page de support pédagogique.' }, { type: 'input_image', image_url: fileUrl, detail: 'high' }]
       : [{ type: 'input_text', text: 'Analyse ce document page par page. Conserve la numérotation réelle des pages.' }, { type: 'input_file', filename: file.originalName, file_data: fileUrl }];
-    const apiKey = await decryptSecret(credential.ciphertext, credential.iv, env.MASTER_ENCRYPTION_KEY);
+    const apiKey = credential.apiKey;
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
