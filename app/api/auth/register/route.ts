@@ -52,6 +52,22 @@ export async function POST(request: Request) {
     if (adminAllowed) { try { legacy = await migrateLegacyData(id); } catch (error) { console.error('Reprise des données historiques différée',error instanceof Error ? error.message : 'erreur inconnue'); } }
     await audit(id, adminAllowed ? 'admin.bootstrap' : 'trainer.requested_access', 'user', id, { legacy, method: adminEligibility.method }, request);
     if (adminAllowed) await createSession(id, request);
-    return jsonOk({ status: adminAllowed ? 'active' : 'pending', message: adminAllowed ? 'Votre compte administrateur est prêt. Vous avez maintenant accès à toute l’administration.' : 'Votre demande d’accès a été enregistrée. L’administrateur pourra maintenant vous autoriser.' }, 201);
+    if (!adminAllowed && env.RESEND_API_KEY && env.RESEND_FROM_EMAIL && env.INITIAL_ADMIN_EMAIL) {
+      try {
+        await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: env.RESEND_FROM_EMAIL,
+            to: [env.INITIAL_ADMIN_EMAIL],
+            subject: 'Nouvelle demande d’accès formateur',
+            text: `${firstName} ${lastName} (${email}) vient de demander un accès à Progressed Pédago. Ouvrez la rubrique Administration pour choisir sa formule, ses droits et lui remettre son code d’accès.`,
+          }),
+        });
+      } catch (error) {
+        console.error('Notification administrateur différée', error instanceof Error ? error.message : 'erreur inconnue');
+      }
+    }
+    return jsonOk({ status: adminAllowed ? 'active' : 'pending', message: adminAllowed ? 'Votre compte administrateur est prêt. Vous avez maintenant accès à toute l’administration.' : 'Votre demande est enregistrée. L’administrateur va choisir vos droits et vous remettre un code d’accès.' }, 201);
   } catch (error) { return jsonError(error); }
 }

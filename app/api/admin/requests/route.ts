@@ -1,10 +1,12 @@
 import { env } from 'cloudflare:workers';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { trainerAccessRequests, trainerPermissions, users } from '@/db/schema';
+import { activationCodes, subscriptionPlans, trainerAccessRequests, trainerPermissions, userSubscriptions, users } from '@/db/schema';
+import { generateTrainerAccessCode, trainerAccessCodeHint } from '@/lib/access-codes';
 import { audit, requireAdmin } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { detectPermissionLevel, normalizePermissions, PERMISSION_KEYS } from '@/lib/permissions';
+import { sha256 } from '@/lib/security';
 
 export async function GET() {
   try {
@@ -19,16 +21,26 @@ export async function GET() {
       firstName: users.firstName,
       lastName: users.lastName,
       accountStatus: users.status,
+      note: trainerAccessRequests.note,
       accessLevel: trainerPermissions.accessLevel,
       permissionsJson: trainerPermissions.permissionsJson,
+      planId: userSubscriptions.planId,
+      planName: subscriptionPlans.name,
+      subscriptionStatus: userSubscriptions.status,
     }).from(trainerAccessRequests)
       .innerJoin(users, eq(trainerAccessRequests.trainerId, users.id))
       .leftJoin(trainerPermissions, eq(trainerPermissions.trainerId, users.id))
+      .leftJoin(userSubscriptions, eq(userSubscriptions.userId, users.id))
+      .leftJoin(subscriptionPlans, eq(subscriptionPlans.id, userSubscriptions.planId))
       .where(eq(users.role, 'trainer'))
       .orderBy(desc(trainerAccessRequests.requestedAt));
+    const codes = await getDb().select({ trainerId: activationCodes.trainerId, codeHint: activationCodes.codeHint, expiresAt: activationCodes.expiresAt, usedAt: activationCodes.usedAt, createdAt: activationCodes.createdAt }).from(activationCodes).orderBy(desc(activationCodes.createdAt));
+    const latestCode = new Map<string,(typeof codes)[number]>();
+    for (const code of codes) if (!latestCode.has(code.trainerId)) latestCode.set(code.trainerId, code);
     return jsonOk({ requests: rows.map(({ permissionsJson, accessLevel, ...row }) => {
       const permissions = normalizePermissions(permissionsJson);
-      return { ...row, accessLevel: accessLevel ?? detectPermissionLevel(permissions), permissions };
+      const code = latestCode.get(row.trainerId);
+      return { ...row, codeHint: code?.codeHint || null, codeExpiresAt: code?.expiresAt ?? null, codeUsedAt: code?.usedAt ?? null, accessLevel: accessLevel ?? detectPermissionLevel(permissions), permissions };
     }) });
   } catch (error) { return jsonError(error); }
 }
@@ -53,20 +65,25 @@ export async function POST(request: Request) {
       return jsonOk({ message: `Droits enregistrés : profil ${label}.`, accessLevel, permissions });
     }
     if (action === 'approve') {
+      const code = generateTrainerAccessCode();
+      const codeHash = await sha256(`${code}${env.SECURITY_PEPPER}`);
+      const expiresAt = now + 7 * 24 * 60 * 60;
       await getDb().batch([
-        getDb().update(trainerAccessRequests).set({ status: 'approved', decidedAt: now, decidedBy: admin.id }).where(eq(trainerAccessRequests.trainerId, trainerId)),
-        getDb().update(users).set({ status: 'active', activatedAt: now, updatedAt: now }).where(eq(users.id, trainerId)),
+        getDb().update(activationCodes).set({ usedAt: now }).where(and(eq(activationCodes.trainerId, trainerId), isNull(activationCodes.usedAt))),
+        getDb().insert(activationCodes).values({ id: crypto.randomUUID(), trainerId, codeHash, codeHint: trainerAccessCodeHint(code), expiresAt, createdBy: admin.id }),
+        getDb().update(trainerAccessRequests).set({ status: 'pending', decidedAt: now, decidedBy: admin.id }).where(eq(trainerAccessRequests.trainerId, trainerId)),
+        getDb().update(users).set({ status: 'pending', activatedAt: null, updatedAt: now }).where(eq(users.id, trainerId)),
       ]);
-      const subject = 'Votre accès à Progressed Pédago';
-      const message = `Bonjour${trainer.displayName ? ` ${trainer.displayName}` : ''},\n\nVotre demande d’accès à Progressed Pédago est acceptée. Vous pouvez maintenant vous connecter avec votre adresse e-mail et le mot de passe choisi lors de votre inscription.\n\nAucun code supplémentaire n’est nécessaire.\n\nÀ bientôt,\nProgressed Solution`;
+      const subject = 'Votre code d’accès à Progressed Pédago';
+      const message = `Bonjour${trainer.displayName ? ` ${trainer.displayName}` : ''},\n\nVotre demande d’accès à Progressed Pédago est acceptée.\n\nVotre code d’accès temporaire est : ${code}\n\nSur la page d’accueil, choisissez « J’ai reçu mon code », puis saisissez votre adresse e-mail et ce code. Il expire dans 7 jours. Votre mot de passe reste celui choisi lors de l’inscription.\n\nÀ bientôt,\nProgressed Solution`;
       const mailto = `mailto:${encodeURIComponent(trainer.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
       let sent = false;
       if (body.sendEmail === true && env.RESEND_API_KEY && env.RESEND_FROM_EMAIL) {
         const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [trainer.email], subject, text: message }) });
         sent = response.ok;
       }
-      await audit(admin.id, 'admin.approved_trainer', 'user', trainerId, { sent }, request);
-      return jsonOk({ mailto, sent, message: sent ? 'Compte autorisé et e-mail envoyé.' : 'Compte autorisé. Le formateur peut se connecter immédiatement.' });
+      await audit(admin.id, 'admin.issued_trainer_code', 'user', trainerId, { sent, expiresAt }, request);
+      return jsonOk({ code, codeHint: trainerAccessCodeHint(code), expiresAt, mailto, sent, message: sent ? 'Code créé et envoyé au formateur.' : 'Code créé. Copiez-le maintenant ou utilisez le message préparé.' });
     }
     const accountStatus = action === 'suspend' ? 'suspended' : action === 'reactivate' ? 'active' : action === 'revoke' ? 'revoked' : null;
     if (accountStatus) {
@@ -81,6 +98,12 @@ export async function POST(request: Request) {
       ]);
       await audit(admin.id, 'admin.refused_trainer', 'user', trainerId, {}, request);
       return jsonOk({ message: 'Demande refusée.' });
+    }
+    if (action === 'update_note') {
+      const note = String(body.note ?? '').trim().slice(0, 500);
+      await getDb().update(trainerAccessRequests).set({ note }).where(eq(trainerAccessRequests.trainerId, trainerId));
+      await audit(admin.id, 'admin.updated_trainer_support_note', 'user', trainerId, {}, request);
+      return jsonOk({ message: 'Note de suivi enregistrée.' });
     }
     throw new AppError(400, 'Action administrateur inconnue.', 'INVALID_ACTION');
   } catch (error) { return jsonError(error); }

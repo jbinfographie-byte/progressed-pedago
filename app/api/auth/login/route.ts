@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const success = Boolean(user && await verifyPassword(String(body.password ?? ''), user.passwordSalt, user.passwordHash));
     await getDb().insert(loginAttempts).values({ id: crypto.randomUUID(), emailHash, ipHash: await requestFingerprint(request), success });
     if (!success) throw new AppError(401, 'Adresse e-mail ou mot de passe incorrect.', 'INVALID_CREDENTIALS');
-    if (user.status === 'pending') throw new AppError(403, 'Votre demande est en attente de validation par l’administrateur.', 'ACCOUNT_PENDING');
+    if (user.status === 'pending') throw new AppError(403, 'Votre compte attend le code remis par l’administrateur. Choisissez « J’ai mon code » sur la page d’accès.', 'ACCOUNT_PENDING');
     if (user.status === 'suspended') throw new AppError(403, 'Ce compte est temporairement suspendu.', 'ACCOUNT_SUSPENDED');
     if (user.status === 'revoked') throw new AppError(403, 'L’accès à ce compte a été révoqué.', 'ACCOUNT_REVOKED');
     await createSession(user.id, request);

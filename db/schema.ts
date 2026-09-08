@@ -161,6 +161,7 @@ export const activationCodes = sqliteTable('activation_codes', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   codeHash: text('code_hash').notNull(),
+  codeHint: text('code_hint').notNull().default(''),
   expiresAt: integer('expires_at').notNull(),
   usedAt: integer('used_at'),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
