@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 
+const INSTALL_REQUEST_EVENT = 'progressed-pedago:install-request';
+
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
@@ -40,10 +42,25 @@ function installationGuide(): InstallGuide {
   };
 }
 
+function isStandaloneApp() {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
+  return window.matchMedia('(display-mode: standalone)').matches || navigatorWithStandalone.standalone === true;
+}
+
+export function InstallAppButton() {
+  return <button className="nav-item install-app-trigger" type="button" onClick={() => window.dispatchEvent(new Event(INSTALL_REQUEST_EVENT))} aria-haspopup="dialog">
+    <span className="nav-icon" aria-hidden="true">⇩</span>
+    <span className="install-app-default-label">Installer l’application</span>
+    <span className="install-app-installed-label">Application déjà installée</span>
+  </button>;
+}
+
 export function InstallApp() {
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const [installed, setInstalled] = useState(false);
+  const [alreadyInstalled, setAlreadyInstalled] = useState(false);
   const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
@@ -52,11 +69,14 @@ export function InstallApp() {
       event.preventDefault();
       setPromptEvent(event as InstallPromptEvent);
       setInstalled(false);
+      setAlreadyInstalled(false);
     };
     const appInstalled = () => {
       setInstalled(true);
+      setAlreadyInstalled(true);
       setPromptEvent(null);
-      setShowGuide(false);
+      setFeedback('Progressed Pédago est maintenant installé sur cet appareil. Vous pouvez fermer ce message et ouvrir l’application depuis son icône.');
+      setShowGuide(true);
     };
     window.addEventListener('beforeinstallprompt', beforeInstall);
     window.addEventListener('appinstalled', appInstalled);
@@ -66,30 +86,42 @@ export function InstallApp() {
     };
   }, []);
 
-  if (installed) return null;
-
-  const install = async () => {
-    if (!promptEvent) {
-      setFeedback('');
-      setShowGuide(true);
-      return;
-    }
-    try {
-      await promptEvent.prompt();
-      const choice = await promptEvent.userChoice;
-      if (choice.outcome === 'accepted') {
-        setInstalled(true);
-        setShowGuide(false);
-      } else {
-        setFeedback('Installation annulée. Vous pouvez recommencer ou suivre les étapes ci-dessous.');
-        setShowGuide(true);
-      }
-      setPromptEvent(null);
-    } catch {
-      setFeedback('Ce navigateur ne permet pas l’installation automatique. Suivez les étapes ci-dessous.');
-      setShowGuide(true);
-    }
-  };
+  useEffect(() => {
+    const requestInstall = () => {
+      void (async () => {
+        if (isStandaloneApp() || installed) {
+          setAlreadyInstalled(true);
+          setFeedback('Progressed Pédago est déjà installé sur cet appareil. Vous utilisez actuellement la version installée.');
+          setShowGuide(true);
+          return;
+        }
+        setAlreadyInstalled(false);
+        if (!promptEvent) {
+          setFeedback('');
+          setShowGuide(true);
+          return;
+        }
+        try {
+          await promptEvent.prompt();
+          const choice = await promptEvent.userChoice;
+          if (choice.outcome === 'accepted') {
+            setInstalled(true);
+            setAlreadyInstalled(true);
+            setFeedback('Progressed Pédago est maintenant installé. Son icône est disponible depuis les applications de votre appareil.');
+          } else {
+            setFeedback('Installation annulée. Vous pouvez recommencer ou suivre les étapes ci-dessous.');
+          }
+          setShowGuide(true);
+          setPromptEvent(null);
+        } catch {
+          setFeedback('Ce navigateur ne permet pas l’installation automatique. Suivez les étapes ci-dessous.');
+          setShowGuide(true);
+        }
+      })();
+    };
+    window.addEventListener(INSTALL_REQUEST_EVENT, requestInstall);
+    return () => window.removeEventListener(INSTALL_REQUEST_EVENT, requestInstall);
+  }, [installed, promptEvent]);
 
   const copyAddress = async () => {
     try {
@@ -100,30 +132,27 @@ export function InstallApp() {
     }
   };
 
+  if (!showGuide) return null;
+
   const guide = installationGuide();
 
-  return <>
-    <button className="nav-item install-app-trigger" type="button" onClick={() => void install()} aria-haspopup="dialog">
-      <span className="nav-icon" aria-hidden="true">⇩</span>
-      <span>Installer l’application</span>
-    </button>
-    {showGuide && <div className="install-app-backdrop" role="dialog" aria-modal="true" aria-labelledby="install-app-title">
-      <section className="install-app-dialog">
-        <button className="install-app-close" type="button" onClick={() => setShowGuide(false)} aria-label="Fermer">×</button>
-        <Image src="/icons/progressed-pedago-192.png" width={88} height={88} alt="Icône Progressed Pédago" priority />
-        <p className="overline">Accès rapide</p>
-        <h2 id="install-app-title">Ajouter Progressed Pédago à l’écran d’accueil</h2>
+  return <div className="install-app-backdrop" role="dialog" aria-modal="true" aria-labelledby="install-app-title">
+    <section className="install-app-dialog">
+      <button className="install-app-close" type="button" onClick={() => setShowGuide(false)} aria-label="Fermer">×</button>
+      <Image src="/icons/progressed-pedago-192.png" width={88} height={88} alt="Icône Progressed Pédago" priority />
+      <p className="overline">Accès rapide</p>
+      <h2 id="install-app-title">{alreadyInstalled ? 'Progressed Pédago est déjà installé' : 'Ajouter Progressed Pédago à l’écran d’accueil'}</h2>
+      {alreadyInstalled ? <div className="install-app-success"><span aria-hidden="true">✓</span><div><strong>Application disponible</strong><p>{feedback}</p></div></div> : <>
         <div className="install-app-device"><strong>{guide.label}</strong><span>{promptEvent ? 'Installation directe disponible' : 'Installation guidée'}</span></div>
         <ol className="install-app-steps">{guide.steps.map((step, index) => <li key={step}><span>{index + 1}</span><p>{step}</p></li>)}</ol>
         {feedback && <p className="install-app-feedback" role="status">{feedback}</p>}
         <p className="install-app-note">L’application ouvrira directement le site dans une fenêtre dédiée. Vos identifiants restent protégés et aucune donnée de cours n’est stockée hors connexion.</p>
         <div className="install-app-actions">
-          {promptEvent && <button className="button dark" type="button" onClick={() => void install()}>Installer maintenant</button>}
           <a className="button light" href="/" target="_blank" rel="noreferrer">Ouvrir dans un nouvel onglet</a>
           <button className="button light" type="button" onClick={() => void copyAddress()}>Copier l’adresse</button>
         </div>
-        <button className="install-app-dismiss" type="button" onClick={() => setShowGuide(false)}>Fermer le guide</button>
-      </section>
-    </div>}
-  </>;
+      </>}
+      <button className="button dark full" type="button" onClick={() => setShowGuide(false)}>{alreadyInstalled ? 'Continuer dans l’application' : 'Fermer le guide'}</button>
+    </section>
+  </div>;
 }

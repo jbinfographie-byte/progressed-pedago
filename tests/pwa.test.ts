@@ -23,14 +23,17 @@ test('le service worker ne met pas en cache les pages privées ni les API', () =
 });
 
 test('l’installation est proposée dans la navigation sans bouton flottant', () => {
-  assert.match(appSource, /<nav aria-label="Navigation principale">[\s\S]*<InstallApp \/>[\s\S]*<\/nav>/);
+  assert.match(appSource, /<nav aria-label="Navigation principale">[\s\S]*<InstallAppButton \/>[\s\S]*<\/nav>/);
+  assert.match(appSource, /<HelpCenter user=\{user\} \/>[\s\S]*<InstallApp \/>/);
   assert.doesNotMatch(styles, /\.install-app-trigger\s*\{[^}]*position:\s*fixed/);
 });
 
 test('le parcours propose une installation directe et un guide multi-appareils', () => {
   assert.match(installSource, /beforeinstallprompt/);
-  assert.match(installSource, /Installer maintenant/);
+  assert.match(installSource, /await promptEvent\.prompt\(\)/);
   assert.match(installSource, /Sur iPhone ou iPad/);
   assert.match(installSource, /ordinateur Windows/);
   assert.match(installSource, /Ajouter au Dock/);
+  assert.match(installSource, /display-mode: standalone/);
+  assert.match(installSource, /est déjà installé sur cet appareil/);
 });

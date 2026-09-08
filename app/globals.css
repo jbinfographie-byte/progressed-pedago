@@ -27,6 +27,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 
 .install-app-trigger { width: 100%; border: 1px solid rgba(221,245,74,.24); color: #efffab; background: rgba(221,245,74,.06); cursor: pointer; }
 .install-app-trigger:hover { border-color: rgba(221,245,74,.5); background: rgba(221,245,74,.12); color: white; }
+.install-app-installed-label { display: none; }
 .install-app-backdrop { position: fixed; inset: 0; z-index: 140; display: grid; place-items: center; padding: 20px; background: rgba(5,36,30,.75); backdrop-filter: blur(7px); }
 .install-app-dialog { position: relative; width: min(520px,100%); display: grid; gap: 15px; border-radius: 24px; padding: clamp(26px,5vw,42px); background: #fbfcf9; box-shadow: 0 30px 90px rgba(0,0,0,.34); }
 .install-app-dialog > img { border-radius: 22px; box-shadow: 0 10px 28px rgba(19,61,52,.16); }
@@ -39,12 +40,15 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .install-app-steps li > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--deep-2); background: var(--lime); font-weight: 950; }
 .install-app-steps p { margin: 0; color: #3d5f56; line-height: 1.45; }
 .install-app-feedback { border-left: 4px solid #dba338; border-radius: 0 10px 10px 0; padding: 10px 12px; background: #fff7df; font-size: .82rem; }
+.install-app-success { display: grid; grid-template-columns: 46px 1fr; gap: 13px; align-items: center; border: 1px solid #b8d8c8; border-radius: 15px; padding: 16px; background: #eaf7f0; }
+.install-app-success > span { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; color: white; background: #2e8067; font-size: 1.35rem; font-weight: 950; }
+.install-app-success strong { color: #174d40; }
+.install-app-success p { margin: 4px 0 0; color: #496d63; line-height: 1.5; }
 .install-app-note { border-radius: 12px; padding: 12px 14px; background: #edf6f1; font-size: .82rem; }
 .install-app-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .install-app-actions .button { flex: 1 1 145px; min-height: 44px; padding-inline: 14px; }
-.install-app-dismiss { justify-self: center; border: 0; color: #315f54; background: transparent; font-weight: 850; text-decoration: underline; text-underline-offset: 3px; }
 .install-app-close { position: absolute; top: 15px; right: 15px; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: white; font-size: 1.4rem; }
-@media (display-mode: standalone) { .install-app-trigger { display: none; } }
+@media (display-mode: standalone) { .install-app-default-label { display: none; }.install-app-installed-label { display: inline; } }
 @media print { .install-app-trigger,.install-app-backdrop { display: none !important; } }
 
 .app-frame { width: min(1800px, 100%); min-height: 100vh; margin: 0 auto; display: grid; grid-template-columns: 320px 1fr; background: var(--paper); }
