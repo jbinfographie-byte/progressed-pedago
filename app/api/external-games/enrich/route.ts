@@ -8,6 +8,7 @@ import { decryptSecret } from '@/lib/security';
 import { extractExternalGameUrl, providerFromExternalGameUrl, providerLabel } from '@/lib/external-games';
 import { resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
 import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
+import { preflightAiUsage } from '@/lib/subscriptions-server';
 
 type ExternalAnalysis = {
   title: string;
@@ -31,7 +32,7 @@ type ExternalAnalysis = {
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requirePermission('useAi'); assertPermission(user, 'createActivities');
+    const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:2});
     const body = await readJson(request);
     const sourceUrl = extractExternalGameUrl(String(body.sourceUrl ?? body.embedUrl ?? ''));
     if (!sourceUrl) throw new AppError(400, 'Ajoutez d’abord un lien HTTPS ou un code iframe valide.', 'EXTERNAL_GAME_URL_REQUIRED');

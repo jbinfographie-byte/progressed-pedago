@@ -28,3 +28,13 @@ Définir `INITIAL_ADMIN_EMAIL` avec l’adresse du propriétaire du Site. Lors d
 ## Déploiement
 
 Le projet utilise Sites, D1 pour les données relationnelles, R2 pour les documents et les routes serveur pour OpenAI. Configurez les variables de `ENVIRONMENT.md` dans l’environnement d’hébergement, appliquez les migrations, puis lancez la publication Sites.
+
+## Formules, quotas et maîtrise des coûts
+
+L’administration comporte trois formules initiales entièrement modifiables : Essentiel, Coach et Intensif. Le prix, les minutes vocales quotidiennes et mensuelles, les crédits, le budget API interne et chaque droit fonctionnel sont enregistrés en base. L’administrateur peut attribuer une formule, programmer ses dates, ajouter ou retirer des crédits, personnaliser les limites et créer des exceptions de droits par utilisateur.
+
+Les contrôles sensibles sont effectués côté serveur avant les appels IA. Les événements d’usage enregistrent la fonctionnalité, le modèle, les jetons disponibles, la durée audio, le coût estimé ou réel et les crédits débités. Les compteurs quotidiens et mensuels sont remis à zéro automatiquement à leur échéance. Une limite atteinte suspend uniquement la fonction coûteuse concernée : les contenus déjà créés et les activités de base restent accessibles.
+
+Le compte administrateur initial reçoit un accès Intensif illimité pour les essais. Les autres comptes commencent avec la formule Essentiel ; le Coach vocal y reste disponible avec un quota limité, tandis que les dialogues professionnels, jeux de rôle et corrections personnalisées dépendent des formules supérieures ou d’une exception individuelle.
+
+La migration `0011_rare_wolfpack.sql` ajoute les tables de formules, abonnements, exceptions, consommation IA, mouvements de crédits et historique sans modifier ni supprimer les données pédagogiques existantes.

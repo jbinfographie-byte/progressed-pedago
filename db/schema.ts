@@ -44,6 +44,119 @@ export const trainerPermissions = sqliteTable('trainer_permissions', {
   updatedAt: integer('updated_at').notNull().default(now),
 });
 
+export const subscriptionPlans = sqliteTable('subscription_plans', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  priceCents: integer('price_cents').notNull().default(0),
+  currency: text('currency').notNull().default('EUR'),
+  monthlyVoiceSeconds: integer('monthly_voice_seconds').notNull().default(0),
+  dailyVoiceSeconds: integer('daily_voice_seconds').notNull().default(0),
+  monthlyCredits: integer('monthly_credits').notNull().default(0),
+  monthlyApiBudgetMicros: integer('monthly_api_budget_micros').notNull().default(0),
+  featuresJson: text('features_json').notNull().default('{}'),
+  creditCostsJson: text('credit_costs_json').notNull().default('{}'),
+  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  index('idx_subscription_plans_active_order').on(table.active, table.sortOrder),
+  check('ck_subscription_plans_limits', sql`${table.priceCents} >= 0 AND ${table.monthlyVoiceSeconds} >= 0 AND ${table.dailyVoiceSeconds} >= 0 AND ${table.monthlyCredits} >= 0 AND ${table.monthlyApiBudgetMicros} >= 0`),
+]);
+
+export const userSubscriptions = sqliteTable('user_subscriptions', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  planId: text('plan_id').notNull().references(() => subscriptionPlans.id),
+  status: text('status', { enum: ['active', 'trial', 'free', 'suspended', 'expired', 'canceled'] }).notNull().default('free'),
+  startsAt: integer('starts_at').notNull().default(now),
+  renewsAt: integer('renews_at'),
+  endsAt: integer('ends_at'),
+  resetAt: integer('reset_at').notNull(),
+  creditsRemaining: integer('credits_remaining').notNull().default(0),
+  extraCredits: integer('extra_credits').notNull().default(0),
+  voiceSecondsMonth: integer('voice_seconds_month').notNull().default(0),
+  voiceSecondsDay: integer('voice_seconds_day').notNull().default(0),
+  apiCostMicrosMonth: integer('api_cost_micros_month').notNull().default(0),
+  voiceMonthlyOverrideSeconds: integer('voice_monthly_override_seconds'),
+  voiceDailyOverrideSeconds: integer('voice_daily_override_seconds'),
+  apiBudgetOverrideMicros: integer('api_budget_override_micros'),
+  creditsMonthlyOverride: integer('credits_monthly_override'),
+  dayKey: text('day_key').notNull(),
+  monthKey: text('month_key').notNull(),
+  unlimited: integer('unlimited', { mode: 'boolean' }).notNull().default(false),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  index('idx_user_subscriptions_plan_status').on(table.planId, table.status),
+  index('idx_user_subscriptions_reset').on(table.resetAt, table.status),
+  check('ck_user_subscriptions_usage', sql`${table.creditsRemaining} >= 0 AND ${table.extraCredits} >= 0 AND ${table.voiceSecondsMonth} >= 0 AND ${table.voiceSecondsDay} >= 0 AND ${table.apiCostMicrosMonth} >= 0 AND (${table.voiceMonthlyOverrideSeconds} IS NULL OR ${table.voiceMonthlyOverrideSeconds} >= 0) AND (${table.voiceDailyOverrideSeconds} IS NULL OR ${table.voiceDailyOverrideSeconds} >= 0) AND (${table.apiBudgetOverrideMicros} IS NULL OR ${table.apiBudgetOverrideMicros} >= 0) AND (${table.creditsMonthlyOverride} IS NULL OR ${table.creditsMonthlyOverride} >= 0)`),
+]);
+
+export const userFeatureOverrides = sqliteTable('user_feature_overrides', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  feature: text('feature').notNull(),
+  allowed: integer('allowed', { mode: 'boolean' }).notNull(),
+  expiresAt: integer('expires_at'),
+  note: text('note').notNull().default(''),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_user_feature_override').on(table.userId, table.feature),
+  index('idx_user_feature_overrides_expiry').on(table.userId, table.expiresAt),
+]);
+
+export const aiUsageEvents = sqliteTable('ai_usage_events', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  feature: text('feature').notNull(),
+  model: text('model').notNull().default(''),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  audioSeconds: integer('audio_seconds').notNull().default(0),
+  estimatedCostMicros: integer('estimated_cost_micros').notNull().default(0),
+  actualCostMicros: integer('actual_cost_micros'),
+  creditsCharged: integer('credits_charged').notNull().default(0),
+  requestId: text('request_id'),
+  status: text('status', { enum: ['started', 'completed', 'failed', 'blocked'] }).notNull().default('completed'),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_ai_usage_events_request').on(table.requestId),
+  index('idx_ai_usage_events_user_date').on(table.userId, table.createdAt),
+  index('idx_ai_usage_events_feature_date').on(table.feature, table.createdAt),
+  check('ck_ai_usage_events_amounts', sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.audioSeconds} >= 0 AND ${table.estimatedCostMicros} >= 0 AND ${table.creditsCharged} >= 0`),
+]);
+
+export const creditTransactions = sqliteTable('credit_transactions', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  amount: integer('amount').notNull(),
+  balanceAfter: integer('balance_after').notNull(),
+  kind: text('kind', { enum: ['monthly_reset', 'usage', 'admin_adjustment', 'pack', 'refund'] }).notNull(),
+  label: text('label').notNull().default(''),
+  actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  index('idx_credit_transactions_user_date').on(table.userId, table.createdAt),
+  check('ck_credit_transactions_balance', sql`${table.balanceAfter} >= 0`),
+]);
+
+export const subscriptionEvents = sqliteTable('subscription_events', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  fromPlanId: text('from_plan_id'),
+  toPlanId: text('to_plan_id'),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  index('idx_subscription_events_user_date').on(table.userId, table.createdAt),
+  index('idx_subscription_events_action_date').on(table.action, table.createdAt),
+]);
+
 export const activationCodes = sqliteTable('activation_codes', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

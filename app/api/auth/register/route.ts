@@ -8,6 +8,7 @@ import { assertSameOrigin, cleanEmail, jsonError, jsonOk, readJson, AppError } f
 import { hashPassword, validatePassword } from '@/lib/security';
 import { migrateLegacyData } from '@/lib/legacy-migration';
 import { PERMISSION_PRESETS } from '@/lib/permissions';
+import { ensureUserSubscription } from '@/lib/subscriptions-server';
 
 export async function POST(request: Request) {
   try {
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
     const insertRequest = getDb().insert(trainerAccessRequests).values({ id: crypto.randomUUID(), trainerId: id, status: adminAllowed ? 'approved' : 'pending', decidedAt: adminAllowed ? now : null });
     if (adminAllowed) await getDb().batch([insertUser, insertRequest]);
     else await getDb().batch([insertUser, insertRequest, getDb().insert(trainerPermissions).values({ trainerId: id, accessLevel: 'limited', permissionsJson: JSON.stringify(PERMISSION_PRESETS.limited) })]);
+    await ensureUserSubscription(id,adminAllowed?'admin':'trainer');
     let legacy = { activities:0,results:0 };
     if (adminAllowed) { try { legacy = await migrateLegacyData(id); } catch (error) { console.error('Reprise des données historiques différée',error instanceof Error ? error.message : 'erreur inconnue'); } }
     await audit(id, adminAllowed ? 'admin.bootstrap' : 'trainer.requested_access', 'user', id, { legacy, method: adminEligibility.method }, request);

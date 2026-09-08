@@ -8,6 +8,7 @@ import { coursePagesFromContent, type CoursePage } from '@/lib/course-pages';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { decryptSecret } from '@/lib/security';
 import type { ActivityType } from '@/lib/activity-types';
+import { preflightAiUsage } from '@/lib/subscriptions-server';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
@@ -37,7 +38,7 @@ export async function POST(request:Request) {
       if(!file) throw new AppError(400,'Choisissez une image PNG ou JPEG.','IMAGE_REQUIRED');
       const uploaded=await readUploadedImage(file); bytes=uploaded.bytes; mimeType=uploaded.mimeType; source='upload';
     } else {
-      assertPermission(user,'useAi'); const credential=(await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId,user.id)).limit(1))[0];
+      assertPermission(user,'useAi'); await preflightAiUsage(user.id,user.role,'textAi'); const credential=(await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId,user.id)).limit(1))[0];
       if(!credential) throw new AppError(409,'Connectez d’abord votre clé OpenAI personnelle dans Connexions.','OPENAI_NOT_CONNECTED');
       const apiKey=await decryptSecret(credential.ciphertext,credential.iv,env.MASTER_ENCRYPTION_KEY);
       if(values.mode==='ai') bytes=await generateImage(apiKey,finalPrompt);

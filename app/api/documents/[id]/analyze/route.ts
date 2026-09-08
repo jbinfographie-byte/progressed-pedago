@@ -6,6 +6,7 @@ import { assertPermission, audit, requirePermission } from '@/lib/auth';
 import { arrayBufferToBase64, documentAnalysisSchema, findOpenAIOutputText, normalizeDocumentAnalysis } from '@/lib/document-knowledge';
 import { AppError, assertSameOrigin, jsonError, jsonOk } from '@/lib/http';
 import { decryptSecret } from '@/lib/security';
+import { preflightAiUsage } from '@/lib/subscriptions-server';
 
 type OpenAIResponse = { output?: unknown[]; error?: { code?: string } };
 
@@ -17,6 +18,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     assertSameOrigin(request);
     const user = await requirePermission('uploadDocuments');
     assertPermission(user, 'useAi');
+    await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:5});
     trainerId = user.id;
     fileId = (await context.params).id;
     const db = getDb();

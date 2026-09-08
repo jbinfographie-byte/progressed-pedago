@@ -8,12 +8,13 @@ import { createPowerPoint, safePresentationFilename, type PresentationDeck } fro
 import { normalizeSourceKind, resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
 import { decryptSecret } from '@/lib/security';
 import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
+import { preflightAiUsage } from '@/lib/subscriptions-server';
 
 type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: string } };
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requirePermission('useAi'); const body = await readJson(request);
+    assertSameOrigin(request); const user = await requirePermission('useAi'); await preflightAiUsage(user.id,user.role,'textAi',{minimumCredits:5}); const body = await readJson(request);
     const fileIds = Array.isArray(body.fileIds) ? body.fileIds.map(String).slice(0,5) : [];
     const kind = normalizeSourceKind(body.sourceKind);
     if (kind === 'documents' && !fileIds.length) throw new AppError(400,'Ajoutez au moins un PDF ou un document pour créer la présentation.','PRESENTATION_DOCUMENT_REQUIRED');

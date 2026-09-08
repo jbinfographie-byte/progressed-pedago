@@ -13,12 +13,13 @@ import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
 import { coursePagesJsonSchema, normalizeCourseLength, resolveCoursePageCount, stabilizeCoursePages, validateCoursePages } from '@/lib/course-pages';
 import { normalizeExternalGameContent, providerLabel } from '@/lib/external-games';
 import { diversifyGeneratedAnswerPositions } from '@/lib/quiz-answer-order';
+import { preflightAiUsage, recordAiUsage } from '@/lib/subscriptions-server';
 
-type OpenAIResponse = { output?: unknown[]; error?: { code?: string; message?: string } };
+type OpenAIResponse = { id?: string; output?: unknown[]; usage?: { input_tokens?: number; output_tokens?: number }; error?: { code?: string; message?: string } };
 
 export async function POST(request: Request) {
   try {
-    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); const body = await readJson(request); const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8); const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
+    assertSameOrigin(request); const user = await requirePermission('useAi'); assertPermission(user, 'createActivities'); await preflightAiUsage(user.id,user.role,'textAi'); const body = await readJson(request); const fileIds = [...new Set(Array.isArray(body.fileIds) ? body.fileIds.map(String).filter(Boolean) : [])].slice(0, 8); const sourceKind = normalizeSourceKind(body.sourceKind); const rawPrompt = String(body.prompt ?? '').trim();
     const mainFolderId = String(body.mainFolderId ?? '').trim();
     const targetTheme = mainFolderId ? (await getDb().select().from(mainFolders).where(and(eq(mainFolders.id,mainFolderId),eq(mainFolders.trainerId,user.id))).limit(1))[0] : null;
     if (mainFolderId && !targetTheme) throw new AppError(404,'Le dossier métier ou thématique choisi est introuvable.','MAIN_FOLDER_NOT_FOUND');
@@ -121,6 +122,7 @@ export async function POST(request: Request) {
     }
     if (projectId) { const scenarioActivity = created.find(({draft}) => draft.type === 'scenario'); if (scenarioActivity) statements.push(getDb().update(scenarioProjects).set({ status:'ready',activityId:scenarioActivity.id,briefJson:JSON.stringify(body.scenarioBrief ?? {}),settingsJson:JSON.stringify({scenarioCount:body.scenarioCount,scenarioDifficulty:body.scenarioDifficulty,scenarioProgressive:body.scenarioProgressive,scenarioSimpleFrench:body.scenarioSimpleFrench}),updatedAt:now }).where(and(eq(scenarioProjects.id,projectId),eq(scenarioProjects.trainerId,user.id)))); }
     await getDb().batch(statements as unknown as Parameters<ReturnType<typeof getDb>['batch']>[0]);
+    await recordAiUsage({ userId:user.id,feature:multiPageCourse?'advanced_course_generation':'activity_generation',model:credential.model,inputTokens:payload.usage?.input_tokens,outputTokens:payload.usage?.output_tokens,creditsCharged:multiPageCourse?5:Math.max(1,created.length*2),requestId:payload.id,status:'completed',metadata:{formats,fileCount:files.length,sourceKind} });
     await audit(user.id, 'ai.bundle_generated', 'activity_bundle', generatedTrainingId, { count: created.length, formats, fileCount: files.length, research, sourceKind, analysisMethod:source?.analysisMethod ?? null, mainFolderId:targetTheme?.id??null, courseLength:multiPageCourse?courseLength:null,coursePageCount:multiPageCourse?coursePageCount:null }, request);
     const sourceNotice = source?.analysisMethod === 'audio_transcription' ? ' La piste audio de la vidéo a été transcrite automatiquement.' : source?.analysisMethod === 'public_metadata_visuals' ? ' La vidéo étant restreinte, le cours a été construit à partir de son titre, de sa description publique et de ses aperçus visuels. Importez un fichier autorisé pour une analyse audio complète.' : '';
     return jsonOk({ activities: created.map(({ id, draft }) => ({ id, title: draft.title, type: draft.type,coursePages:sharedCoursePages.map((page)=>({id:page.id,title:page.title,kind:page.kind,lead:page.lead})) })), trainingId:generatedTrainingId, message: `${created.length} création(s) contrôlée(s) et enregistrée(s) dans votre bibliothèque.${multiPageCourse?` Chaque cours comporte ${coursePageCount} pages structurées à partir de l’ensemble du document, avec un exercice contextualisé à la fin de chaque leçon.`:''}${generatedTrainingId?' Une formation en brouillon et son parcours ont été créés dans le grand thème sélectionné.':''}${sourceNotice}`, sourceTranscript:source?.transcript ?? null }, 201);
