@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { DM_Sans, Lora } from 'next/font/google';
 import './globals.css';
 
@@ -16,7 +16,16 @@ export const metadata: Metadata = {
     images: [{ url: '/og.png', width: 1200, height: 630, alt: 'Progressed Pédago — Une idée ou un PDF devient un cours vivant.' }],
   },
   twitter: { card: 'summary_large_image', title: 'Progressed Pédago', description: 'Une idée ou un PDF devient un cours vivant.', images: ['/og.png'] },
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/icons/progressed-pedago-192.png', sizes: '192x192', type: 'image/png' }],
+    apple: [{ url: '/icons/progressed-pedago-180.png', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: { capable: true, title: 'Progressed Pédago', statusBarStyle: 'black-translucent' },
+  formatDetection: { telephone: false },
 };
+
+export const viewport: Viewport = { themeColor: '#0b3b33', colorScheme: 'light' };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (

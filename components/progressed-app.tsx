@@ -10,6 +10,7 @@ import { DocumentLibraryView } from '@/components/document-library-view';
 import { ApplicationsConnectionsView } from '@/components/applications-connections-view';
 import { HelpCenter } from '@/components/help-center';
 import { AdminSupportCenter } from '@/components/admin-support-center';
+import { InstallApp } from '@/components/install-app';
 import { detectPermissionLevel, PERMISSION_DEFINITIONS, PERMISSION_PRESETS, type PermissionLevel, type TrainerPermissions } from '@/lib/permissions';
 import type { ResultCorrection } from '@/lib/result-corrections';
 import { FEATURE_LABELS, SUBSCRIPTION_FEATURES, type PlanFeatures, type SubscriptionFeature } from '@/lib/subscriptions';
@@ -93,6 +94,7 @@ export function ProgressedApp({ initialAuthOpen = false,initialResetToken = '',i
     {renamingActivity && <RenameActivityDialog activity={renamingActivity} onClose={()=>setRenamingActivity(null)} onSave={renameActivity}/>}
     {playing && <ActivityPlayer activity={playing} canManageImages onClose={() => setPlaying(null)} />}
     <HelpCenter user={user} />
+    <InstallApp />
     {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
   </main>;
 }
