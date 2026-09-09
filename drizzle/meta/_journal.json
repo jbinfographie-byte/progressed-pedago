@@ -120,6 +120,13 @@
       "when": 1788951798482,
       "tag": "0016_soft_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788972577949,
+      "tag": "0017_jittery_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

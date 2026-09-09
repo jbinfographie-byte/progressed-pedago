@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { and, asc, desc, eq, ne } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, courseFolders, learnerAccountProgress, learnerAssignments, learnerEvaluationHistory, learnerEvaluations, learnerMessages, learnerNotifications, learnerProfiles, learnerSubmissions, users } from '@/db/schema';
+import { activities, courseFolders, learnerAccountProgress, learnerAssignments, learnerEvaluationHistory, learnerEvaluations, learnerMessages, learnerNotifications, learnerOverallAssessments, learnerProfiles, learnerSubmissions, users } from '@/db/schema';
 import { audit, requireStaff } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { assertStaffLearnerAccess, cleanOptionalEpoch, cleanText, upsertAssignment } from '@/lib/learner-access';
@@ -34,9 +34,10 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     const submissions = await getDb().select({
       id: learnerSubmissions.id, assignmentId: learnerSubmissions.assignmentId, activityId: learnerSubmissions.activityId,
       originalName: learnerSubmissions.originalName, mimeType: learnerSubmissions.mimeType, sizeBytes: learnerSubmissions.sizeBytes,
-      status: learnerSubmissions.status, learnerComment: learnerSubmissions.learnerComment,
+      status: learnerSubmissions.status, score: learnerSubmissions.score, maxScore: learnerSubmissions.maxScore, learnerComment: learnerSubmissions.learnerComment,
       trainerComment: learnerSubmissions.trainerComment, createdAt: learnerSubmissions.createdAt, updatedAt: learnerSubmissions.updatedAt,
     }).from(learnerSubmissions).where(eq(learnerSubmissions.learnerId, learnerId)).orderBy(desc(learnerSubmissions.createdAt));
+    const overallAssessment = (await getDb().select().from(learnerOverallAssessments).where(eq(learnerOverallAssessments.learnerId, learnerId)).limit(1))[0] ?? null;
     const messages = await getDb().select({
       id: learnerMessages.id, trainerId: learnerMessages.trainerId, authorId: learnerMessages.authorId,
       body: learnerMessages.body, readAt: learnerMessages.readAt, createdAt: learnerMessages.createdAt,
@@ -53,7 +54,22 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
         ),
       };
     });
-    return jsonOk({ learner, assignments, progress: publicProgress, evaluations, submissions, messages });
+    const evaluationByActivity = new Map(evaluations.map((row) => [`${row.assignmentId}:${row.activityId}`, row]));
+    const scoredItems = [
+      ...progress.map((row) => evaluationByActivity.get(`${row.assignmentId}:${row.activityId}`) ?? row),
+      ...submissions,
+    ].filter((row) => row.score != null && row.maxScore != null && row.maxScore > 0);
+    const overallMetrics = {
+      averagePercent: scoredItems.length ? Math.round(scoredItems.reduce((sum, row) => sum + Number(row.score) / Number(row.maxScore) * 100, 0) / scoredItems.length) : null,
+      gradedItems: scoredItems.length,
+      completedActivities: progress.filter((row) => ['completed', 'validated'].includes(row.status)).length,
+      startedActivities: progress.length,
+      validatedSubmissions: submissions.filter((row) => row.status === 'validated').length,
+      totalSubmissions: submissions.length,
+      completedPaths: assignments.filter((row) => row.status === 'completed').length,
+      totalPaths: assignments.length,
+    };
+    return jsonOk({ learner, assignments, progress: publicProgress, evaluations, submissions, overallAssessment, overallMetrics, messages });
   } catch (error) { return jsonError(error); }
 }
 
@@ -165,9 +181,34 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       if (!submission) throw new AppError(404, 'Cette production est introuvable.', 'SUBMISSION_NOT_FOUND');
       const assignment = (await getDb().select({ trainerId: learnerAssignments.trainerId }).from(learnerAssignments).where(and(eq(learnerAssignments.id, submission.assignmentId), eq(learnerAssignments.learnerId, learnerId))).limit(1))[0];
       if (!assignment || (actor.role === 'trainer' && assignment.trainerId !== actor.id)) throw new AppError(403, 'Cette production ne vous est pas attribuée.', 'SUBMISSION_ACCESS_DENIED');
-      await getDb().update(learnerSubmissions).set({ status: status as 'reviewing' | 'validated' | 'retry', trainerComment: cleanText(body.comment, 4000), updatedAt: now }).where(eq(learnerSubmissions.id, submissionId));
+      const { score, maxScore } = readScore(body.score, body.maxScore);
+      const trainerComment = cleanText(body.comment, 4000);
+      await getDb().update(learnerSubmissions).set({ status: status as 'reviewing' | 'validated' | 'retry', score, maxScore, trainerComment, updatedAt: now }).where(eq(learnerSubmissions.id, submissionId));
+      if (trainerComment || status === 'validated' || status === 'retry') await getDb().insert(learnerNotifications).values({ id: crypto.randomUUID(), userId: learnerId, kind: 'submission_review', title: status === 'retry' ? 'Une nouvelle version de votre document est demandée' : 'Un document a été corrigé', body: trainerComment, link: '/?learner=results' });
+      await audit(actor.id, 'learner.submission_reviewed', 'learner_submission', submissionId, { status, score, maxScore }, request);
       return jsonOk({ message: 'Le suivi de la production est mis à jour.' });
+    }
+    if (action === 'overall_assessment') {
+      const status = String(body.status ?? 'in_progress');
+      if (!['in_progress', 'validated', 'retry'].includes(status)) throw new AppError(400, 'Statut de bilan invalide.', 'INVALID_STATUS');
+      const { score, maxScore } = readScore(body.score, body.maxScore);
+      const publicComment = cleanText(body.publicComment, 4000);
+      const internalNote = cleanText(body.internalNote, 4000);
+      const current = (await getDb().select().from(learnerOverallAssessments).where(eq(learnerOverallAssessments.learnerId, learnerId)).limit(1))[0];
+      const values = { assessorId: actor.id, status: status as 'in_progress' | 'validated' | 'retry', score, maxScore, publicComment, internalNote, updatedAt: now };
+      if (current) await getDb().update(learnerOverallAssessments).set(values).where(eq(learnerOverallAssessments.id, current.id));
+      else await getDb().insert(learnerOverallAssessments).values({ id: crypto.randomUUID(), learnerId, ...values });
+      if (publicComment || status !== 'in_progress') await getDb().insert(learnerNotifications).values({ id: crypto.randomUUID(), userId: learnerId, kind: 'overall_assessment', title: 'Votre bilan pédagogique a été mis à jour', body: publicComment, link: '/?learner=results' });
+      await audit(actor.id, 'learner.overall_assessment_updated', 'user', learnerId, { status, score, maxScore }, request);
+      return jsonOk({ message: 'Le bilan général est enregistré.' });
     }
     throw new AppError(400, 'Action inconnue.', 'INVALID_ACTION');
   } catch (error) { return jsonError(error); }
+}
+
+function readScore(rawScore: unknown, rawMaxScore: unknown) {
+  const score = rawScore === '' || rawScore == null ? null : Number(rawScore);
+  const maxScore = rawMaxScore === '' || rawMaxScore == null ? null : Number(rawMaxScore);
+  if ((score != null && (!Number.isFinite(score) || score < 0)) || (maxScore != null && (!Number.isFinite(maxScore) || maxScore <= 0)) || (score != null && maxScore != null && score > maxScore)) throw new AppError(400, 'La note saisie est invalide.', 'INVALID_SCORE');
+  return { score, maxScore };
 }

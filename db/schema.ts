@@ -578,6 +578,8 @@ export const learnerSubmissions = sqliteTable('learner_submissions', {
   mimeType: text('mime_type').notNull(),
   sizeBytes: integer('size_bytes').notNull(),
   status: text('status', { enum: ['submitted', 'reviewing', 'validated', 'retry'] }).notNull().default('submitted'),
+  score: integer('score'),
+  maxScore: integer('max_score'),
   learnerComment: text('learner_comment').notNull().default(''),
   trainerComment: text('trainer_comment').notNull().default(''),
   createdAt: integer('created_at').notNull().default(now),
@@ -586,6 +588,24 @@ export const learnerSubmissions = sqliteTable('learner_submissions', {
   uniqueIndex('uq_learner_submissions_object').on(table.objectKey),
   index('idx_learner_submissions_assignment_status').on(table.assignmentId, table.status, table.updatedAt),
   check('ck_learner_submissions_size', sql`${table.sizeBytes} BETWEEN 1 AND 26214400`),
+  check('ck_learner_submissions_scores', sql`(${table.score} IS NULL OR ${table.score} >= 0) AND (${table.maxScore} IS NULL OR ${table.maxScore} > 0)`),
+]);
+
+export const learnerOverallAssessments = sqliteTable('learner_overall_assessments', {
+  id: text('id').primaryKey(),
+  learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assessorId: text('assessor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['in_progress', 'validated', 'retry'] }).notNull().default('in_progress'),
+  score: integer('score'),
+  maxScore: integer('max_score'),
+  publicComment: text('public_comment').notNull().default(''),
+  internalNote: text('internal_note').notNull().default(''),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_overall_assessments_learner').on(table.learnerId),
+  index('idx_learner_overall_assessments_assessor_status').on(table.assessorId, table.status, table.updatedAt),
+  check('ck_learner_overall_assessments_scores', sql`(${table.score} IS NULL OR ${table.score} >= 0) AND (${table.maxScore} IS NULL OR ${table.maxScore} > 0)`),
 ]);
 
 export const learnerMessages = sqliteTable('learner_messages', {

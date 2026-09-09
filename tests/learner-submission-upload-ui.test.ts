@@ -6,6 +6,9 @@ const dropField = readFileSync(new URL('../components/file-drop-field.tsx', impo
 const portal = readFileSync(new URL('../components/learner-portal.tsx', import.meta.url), 'utf8');
 const management = readFileSync(new URL('../components/learner-management-view.tsx', import.meta.url), 'utf8');
 const uploadRoute = readFileSync(new URL('../app/api/learners/[id]/submissions/route.ts', import.meta.url), 'utf8');
+const submissionRoute = readFileSync(new URL('../app/api/learner/submissions/[id]/route.ts', import.meta.url), 'utf8');
+const learnerRoute = readFileSync(new URL('../app/api/learners/[id]/route.ts', import.meta.url), 'utf8');
+const schema = readFileSync(new URL('../db/schema.ts', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
 
 test('le dépôt propose un sélecteur mobile et le glisser-déposer sur ordinateur', () => {
@@ -32,4 +35,26 @@ test('le fichier est contrôlé avant son stockage et nettoyé si la base refuse
   assert.match(uploadRoute, /env\.FILES\.put/);
   assert.match(uploadRoute, /env\.FILES\.delete\(objectKey\)/);
   assert.match(uploadRoute, /staff\.learner_submission_uploaded/);
+});
+
+test('un dépôt peut être retiré avec contrôle des droits et verrouillage après correction', () => {
+  assert.match(submissionRoute, /export async function DELETE/);
+  assert.match(submissionRoute, /assertSameOrigin\(request\)/);
+  assert.match(submissionRoute, /row\.submission\.learnerId===user\.id\|\|row\.trainerId===user\.id/);
+  assert.match(submissionRoute, /\['submitted','retry'\]\.includes\(row\.submission\.status\)/);
+  assert.match(submissionRoute, /getDb\(\)\.delete\(learnerSubmissions\)/);
+  assert.match(submissionRoute, /env\.FILES\.delete/);
+  assert.match(portal, /Retirer ce document de votre espace/);
+  assert.match(management, /Retirer le document/);
+});
+
+test('les documents et le bilan général sont notables par l’équipe pédagogique', () => {
+  assert.match(schema, /learnerOverallAssessments/);
+  assert.match(schema, /score: integer\('score'\)/);
+  assert.match(learnerRoute, /action === 'overall_assessment'/);
+  assert.match(learnerRoute, /action === 'review_submission'/);
+  assert.match(learnerRoute, /score, maxScore, trainerComment/);
+  assert.match(management, /Bilan général de l’apprenant/);
+  assert.match(management, /Enregistrer la correction/);
+  assert.match(portal, /Productions déjà déposées/);
 });

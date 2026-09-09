@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, courseFolders, learnerAccountProgress, learnerAssignments, learnerEvaluations, learnerMessages, learnerNotifications, learnerProfiles, learnerSubmissions, learningPathItems, learningPaths, users } from '@/db/schema';
+import { activities, courseFolders, learnerAccountProgress, learnerAssignments, learnerEvaluations, learnerMessages, learnerNotifications, learnerOverallAssessments, learnerProfiles, learnerSubmissions, learningPathItems, learningPaths, users } from '@/db/schema';
 import { audit, requireLearner } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { cleanText } from '@/lib/learner-access';
@@ -33,6 +33,7 @@ export async function GET() {
     const progress=await getDb().select().from(learnerAccountProgress).where(eq(learnerAccountProgress.learnerId,learner.id));
     const evaluations=await getDb().select().from(learnerEvaluations).where(eq(learnerEvaluations.learnerId,learner.id)).orderBy(desc(learnerEvaluations.updatedAt));
     const submissions=await getDb().select().from(learnerSubmissions).where(eq(learnerSubmissions.learnerId,learner.id)).orderBy(desc(learnerSubmissions.createdAt));
+    const overallAssessment=(await getDb().select({status:learnerOverallAssessments.status,score:learnerOverallAssessments.score,maxScore:learnerOverallAssessments.maxScore,publicComment:learnerOverallAssessments.publicComment,updatedAt:learnerOverallAssessments.updatedAt}).from(learnerOverallAssessments).where(eq(learnerOverallAssessments.learnerId,learner.id)).limit(1))[0]??null;
     const messages=await getDb().select().from(learnerMessages).where(eq(learnerMessages.learnerId,learner.id)).orderBy(asc(learnerMessages.createdAt));
     const notifications=await getDb().select().from(learnerNotifications).where(eq(learnerNotifications.userId,learner.id)).orderBy(desc(learnerNotifications.createdAt)).limit(50);
     const progressByAssignmentActivity=new Map(progress.map((row)=>[`${row.assignmentId}:${row.activityId}`,row]));
@@ -43,8 +44,8 @@ export async function GET() {
       return{...item,correction:revealCorrection?item.correction:'',objectives:JSON.parse(item.objectivesJson),content:JSON.parse(item.contentJson),sources:[]};
     })}));
     const safeEvaluations=evaluations.map((evaluation)=>{const assignment=assignmentById.get(evaluation.assignmentId);return{id:evaluation.id,assignmentId:evaluation.assignmentId,activityId:evaluation.activityId,status:evaluation.status,score:assignment?.resultVisible?evaluation.score:null,maxScore:assignment?.resultVisible?evaluation.maxScore:null,publicComment:assignment?.commentsVisible?evaluation.publicComment:'',updatedAt:evaluation.updatedAt};});
-    const safeSubmissions=submissions.map((submission)=>({id:submission.id,assignmentId:submission.assignmentId,activityId:submission.activityId,originalName:submission.originalName,status:submission.status,trainerComment:assignmentById.get(submission.assignmentId)?.commentsVisible?submission.trainerComment:'',createdAt:submission.createdAt}));
-    return jsonOk({ learner:{id:learner.id,email:learner.email,firstName:learner.firstName,lastName:learner.lastName,displayName:learner.displayName}, profile, assignments:safeAssignments, progress, evaluations:safeEvaluations, submissions:safeSubmissions, messages, notifications });
+    const safeSubmissions=submissions.map((submission)=>({id:submission.id,assignmentId:submission.assignmentId,activityId:submission.activityId,originalName:submission.originalName,sizeBytes:submission.sizeBytes,status:submission.status,score:submission.score,maxScore:submission.maxScore,trainerComment:assignmentById.get(submission.assignmentId)?.commentsVisible?submission.trainerComment:'',createdAt:submission.createdAt}));
+    return jsonOk({ learner:{id:learner.id,email:learner.email,firstName:learner.firstName,lastName:learner.lastName,displayName:learner.displayName}, profile, assignments:safeAssignments, progress, evaluations:safeEvaluations, submissions:safeSubmissions, overallAssessment, messages, notifications });
   } catch(error){return jsonError(error);}
 }
 
