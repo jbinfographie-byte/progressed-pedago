@@ -7,6 +7,8 @@ import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/h
 import { assertStaffLearnerAccess, cleanOptionalEpoch, cleanText, upsertAssignment } from '@/lib/learner-access';
 import { learnerAccessEmail, learnerAccessUrl } from '@/lib/learner-access-email';
 import { sendTransactionalEmail } from '@/lib/notifications';
+import { buildResultCorrection } from '@/lib/result-corrections';
+import type { ActivityType } from '@/lib/activity-types';
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -21,7 +23,8 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       .where(and(eq(learnerAssignments.learnerId, learnerId), ne(learnerAssignments.status, 'removed')));
     const progress = await getDb().select({
       id: learnerAccountProgress.id, assignmentId: learnerAccountProgress.assignmentId, activityId: learnerAccountProgress.activityId,
-      activityTitle: activities.title, status: learnerAccountProgress.status, score: learnerAccountProgress.score,
+      activityTitle: activities.title, activityType: activities.type, activityContentJson: activities.contentJson,
+      activityCorrection: activities.correction, status: learnerAccountProgress.status, score: learnerAccountProgress.score,
       maxScore: learnerAccountProgress.maxScore, attempts: learnerAccountProgress.attempts,
       durationSeconds: learnerAccountProgress.durationSeconds, answersJson: learnerAccountProgress.answersJson,
       startedAt: learnerAccountProgress.startedAt, completedAt: learnerAccountProgress.completedAt, updatedAt: learnerAccountProgress.updatedAt,
@@ -38,8 +41,25 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
       id: learnerMessages.id, trainerId: learnerMessages.trainerId, authorId: learnerMessages.authorId,
       body: learnerMessages.body, readAt: learnerMessages.readAt, createdAt: learnerMessages.createdAt,
     }).from(learnerMessages).where(eq(learnerMessages.learnerId, learnerId)).orderBy(asc(learnerMessages.createdAt));
-    return jsonOk({ learner, assignments, progress, evaluations, submissions, messages });
+    const publicProgress = progress.map(({ answersJson, activityContentJson, activityCorrection, ...row }) => {
+      const answers = parseJson<unknown>(answersJson, []);
+      return {
+        ...row,
+        correctionDetails: buildResultCorrection(
+          row.activityType as ActivityType,
+          parseJson<Record<string, unknown>>(activityContentJson, {}),
+          answers,
+          activityCorrection,
+        ),
+      };
+    });
+    return jsonOk({ learner, assignments, progress: publicProgress, evaluations, submissions, messages });
   } catch (error) { return jsonError(error); }
+}
+
+function parseJson<T>(value: string, fallback: T): T {
+  try { return JSON.parse(value) as T; }
+  catch { return fallback; }
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
