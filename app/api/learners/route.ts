@@ -5,6 +5,8 @@ import { courseFolders, learnerAssignments, learnerInvitations, learnerProfiles,
 import { audit, requireStaff } from '@/lib/auth';
 import { AppError, assertSameOrigin, cleanEmail, jsonError, jsonOk, readJson } from '@/lib/http';
 import { cleanText, cleanTrainingIds, upsertAssignment } from '@/lib/learner-access';
+import { learnerAccessEmail, learnerAccessUrl } from '@/lib/learner-access-email';
+import { sendTransactionalEmail } from '@/lib/notifications';
 import { hashPassword, randomToken, sha256, validatePassword } from '@/lib/security';
 
 export async function GET() {
@@ -81,20 +83,23 @@ export async function POST(request: Request) {
       await getDb().insert(learnerProfiles).values({ userId: learnerId, organization, groupName, assignedTrainerId: trainerId, privacyAcceptedAt: now })
         .onConflictDoUpdate({ target: learnerProfiles.userId, set: { organization, groupName, assignedTrainerId: trainerId, updatedAt: now } });
       for (const trainingId of trainingIds) await upsertAssignment({ learnerId, trainingId, trainerId });
-      await audit(actor.id, 'learner.created', 'user', learnerId, { trainingIds, trainerId }, request);
-      return jsonOk({ learnerId, message: existing ? 'Le compte existant a été rattaché aux parcours.' : 'Le compte apprenant est prêt.' }, existing ? 200 : 201);
+      const accessUrl = learnerAccessUrl(request.url, env.NEXT_PUBLIC_SITE_URL);
+      const emailContent = learnerAccessEmail({ firstName, accessUrl });
+      const sent = body.sendEmail === true && await sendTransactionalEmail({ to: email, ...emailContent });
+      await audit(actor.id, 'learner.created', 'user', learnerId, { trainingIds, trainerId, sent }, request);
+      return jsonOk({ learnerId, accessUrl, sent, message: sent ? 'Le compte apprenant est prêt et son lien permanent a été envoyé.' : existing ? 'Le compte existant a été rattaché aux parcours.' : 'Le compte apprenant est prêt.' }, existing ? 200 : 201);
     }
     const token = randomToken(32);
     const expiresAt = Math.floor(Date.now() / 1000) + Math.min(30, Math.max(1, Number(body.expiresInDays) || 7)) * 86_400;
     const invitationId = crypto.randomUUID();
     await getDb().insert(learnerInvitations).values({ id: invitationId, email, firstName, lastName, organization, groupName, assignedTrainerId: trainerId, trainingIdsJson: JSON.stringify(trainingIds), tokenHash: await sha256(token), expiresAt, createdBy: actor.id });
     const inviteUrl = new URL(`/invite/${token}`, request.url).toString();
+    const accessUrl = learnerAccessUrl(request.url, env.NEXT_PUBLIC_SITE_URL);
+    const invitationDays = Math.ceil((expiresAt - Date.now() / 1000) / 86400);
+    const emailContent = learnerAccessEmail({ firstName, accessUrl, invitationUrl: inviteUrl, invitationDays });
     let sent = false;
-    if (body.sendEmail === true && env.RESEND_API_KEY && env.RESEND_FROM_EMAIL) {
-      const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [email], subject: 'Votre accès apprenant à Progressed Pédago', text: `Bonjour ${firstName},\n\nVotre espace apprenant est prêt. Ouvrez ce lien sécurisé pour confirmer votre identité et choisir votre mot de passe :\n${inviteUrl}\n\nCe lien expire dans ${Math.ceil((expiresAt - Date.now() / 1000) / 86400)} jour(s).` }) });
-      sent = response.ok;
-    }
+    if (body.sendEmail === true) sent = await sendTransactionalEmail({ to: email, ...emailContent });
     await audit(actor.id, 'learner.invited', 'learner_invitation', invitationId, { trainerId, trainingIds, sent }, request);
-    return jsonOk({ invitationId, inviteUrl, expiresAt, sent, message: sent ? 'Invitation envoyée.' : 'Invitation créée. Copiez le lien sécurisé.' }, 201);
+    return jsonOk({ invitationId, inviteUrl, accessUrl, expiresAt, sent, message: sent ? 'Invitation et lien permanent envoyés.' : 'Invitation créée. Copiez le lien sécurisé.' }, 201);
   } catch (error) { return jsonError(error); }
 }

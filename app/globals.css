@@ -359,6 +359,39 @@ button.format-card { border: 0; color: var(--ink); text-align: left; }
 @media(max-width:980px){.learner-portal{grid-template-columns:1fr}.learner-sidebar{position:static;height:auto;grid-template-columns:auto 1fr auto;grid-template-rows:auto;padding:14px}.learner-sidebar nav{display:flex;overflow:auto}.learner-sidebar nav button{white-space:nowrap}.learner-profile{border:0;padding:0}.learner-summary{grid-template-columns:repeat(2,1fr)}.learner-create-panel{grid-template-columns:1fr}.learner-training-checks,.assignment-options{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:650px){.invite-summary,.learner-summary,.learner-result-grid{grid-template-columns:1fr}.learner-sidebar{grid-template-columns:1fr}.learner-sidebar .brand{display:none}.learner-profile{display:none}.learner-header,.learner-path-title{align-items:start;flex-direction:column}.learner-trainer{width:100%}.learner-path-card{grid-template-columns:1fr}.learner-path-cover{min-height:130px}.learner-timeline li{grid-template-columns:42px 1fr}.learner-timeline li .button{grid-column:2}.learner-upload{grid-template-columns:1fr}.learner-upload textarea{grid-column:auto}.learner-create-panel .form-row,.learner-training-checks,.assignment-options{grid-template-columns:1fr}.invite-created{grid-template-columns:1fr}.learner-admin-list summary{grid-template-columns:44px 1fr}.learner-admin-list summary>.status-pill,.learner-admin-list summary>b{grid-column:2}.assignment-row{align-items:stretch;flex-direction:column}.learner-messages form{grid-template-columns:1fr}.learner-review-row{grid-template-columns:1fr}.learner-section-title{align-items:flex-start;flex-direction:column}}
 
+/* Retours visuels de navigation et accès permanent apprenant */
+.nav-item,
+.learner-sidebar nav button,
+.tab-list button { touch-action: manipulation; transition: background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .08s ease; }
+.nav-item.active {
+  color: white;
+  background: rgba(224, 246, 85, .17);
+  box-shadow: inset 4px 0 0 var(--lime), 0 5px 16px rgba(0, 22, 17, .18);
+}
+.nav-item:active,
+.learner-sidebar nav button:active,
+.tab-list button:active { transform: translateY(1px) scale(.985); }
+.nav-item:focus-visible,
+.learner-sidebar nav button:focus-visible,
+.tab-list button:focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
+.learner-sidebar nav button.active {
+  color: #fff;
+  background: rgba(224, 246, 85, .18);
+  box-shadow: inset 4px 0 0 var(--lime), 0 5px 16px rgba(0, 22, 17, .2);
+}
+.tab-list button.active {
+  color: var(--ink);
+  background: white;
+  box-shadow: inset 0 -3px 0 var(--lime), 0 4px 14px rgba(20, 61, 53, .12);
+}
+.learner-account-access {
+  border: 1px solid #c8dcd2;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(120deg, #eef8f3, #f8fbe9);
+}
+.learner-account-access > p { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.55; }
+
 /* Aide, support humain et demandes commerciales */
 .help-launcher { position: fixed; z-index: 82; right: 22px; bottom: 22px; display: flex; align-items: center; gap: 9px; border: 0; border-radius: 999px; padding: 10px 16px 10px 10px; color: white; background: var(--deep-2); font-weight: 900; box-shadow: 0 14px 35px rgba(4,47,39,.28); }
 .help-launcher > span { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--deep-2); background: var(--lime); font-size: 1.1rem; }

@@ -1,9 +1,12 @@
+import { env } from 'cloudflare:workers';
 import { and, asc, desc, eq, ne } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { activities, courseFolders, learnerAccountProgress, learnerAssignments, learnerEvaluationHistory, learnerEvaluations, learnerMessages, learnerNotifications, learnerProfiles, learnerSubmissions, users } from '@/db/schema';
 import { audit, requireStaff } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { assertStaffLearnerAccess, cleanOptionalEpoch, cleanText, upsertAssignment } from '@/lib/learner-access';
+import { learnerAccessEmail, learnerAccessUrl } from '@/lib/learner-access-email';
+import { sendTransactionalEmail } from '@/lib/notifications';
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -44,10 +47,20 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     assertSameOrigin(request);
     const actor = await requireStaff();
     const learnerId = (await context.params).id;
-    await assertStaffLearnerAccess(actor, learnerId);
+    const learner = await assertStaffLearnerAccess(actor, learnerId);
     const body = await readJson(request);
     const action = String(body.action ?? 'update_profile');
     const now = Math.floor(Date.now() / 1000);
+    if (action === 'send_access_link') {
+      if (actor.role !== 'admin') throw new AppError(403, 'Seul l’administrateur peut renvoyer ce lien de connexion.', 'ADMIN_REQUIRED');
+      if (learner.status !== 'active') throw new AppError(409, 'Activez d’abord le compte apprenant avant de renvoyer son lien.', 'LEARNER_NOT_ACTIVE');
+      const accessUrl = learnerAccessUrl(request.url, env.NEXT_PUBLIC_SITE_URL);
+      const emailContent = learnerAccessEmail({ firstName: learner.firstName, accessUrl });
+      const sent = await sendTransactionalEmail({ to: learner.email, ...emailContent });
+      const mailto = sent ? undefined : `mailto:${encodeURIComponent(learner.email)}?subject=${encodeURIComponent(emailContent.subject)}&body=${encodeURIComponent(emailContent.text)}`;
+      await audit(actor.id, 'learner.access_link_resent', 'user', learnerId, { sent }, request);
+      return jsonOk({ sent, accessUrl, mailto, message: sent ? 'Le lien permanent de connexion a été renvoyé à l’apprenant.' : 'Le message prêt à envoyer a été ouvert dans votre messagerie.' });
+    }
     if (action === 'update_profile') {
       const firstName = cleanText(body.firstName, 80); const lastName = cleanText(body.lastName, 80);
       if (!firstName || !lastName) throw new AppError(400, 'Le prénom et le nom sont obligatoires.', 'NAME_REQUIRED');
