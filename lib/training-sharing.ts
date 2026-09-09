@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { getDb } from '@/db';
 import { learnerParticipants, learningPathItems, trainingShares } from '@/db/schema';
 import { AppError } from '@/lib/app-error';
-import { decryptSecret, sha256 } from '@/lib/security';
+import { decryptSecret, randomToken, sha256 } from '@/lib/security';
 
 export type ShareMode = 'classroom' | 'home';
 export type IdentityMode = 'name' | 'pseudonym' | 'learner_code' | 'anonymous';
@@ -25,6 +25,16 @@ export async function assertLiveActivityInPath(pathId: string, liveActivityId: s
   if (!liveActivityId) throw new AppError(400, 'Choisissez l’activité à ouvrir pendant le cours en direct.', 'LIVE_ACTIVITY_REQUIRED');
   const item = (await getDb().select({id:learningPathItems.id}).from(learningPathItems).where(and(eq(learningPathItems.pathId,pathId),eq(learningPathItems.activityId,liveActivityId))).limit(1))[0];
   if (!item) throw new AppError(400, 'Cette activité ne fait pas partie du parcours publié.', 'LIVE_ACTIVITY_NOT_IN_PATH');
+}
+
+export async function uniqueShareShortCode(): Promise<string> {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    const candidate = randomToken(8).replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toUpperCase();
+    if (candidate.length < 6) continue;
+    const exists = (await getDb().select({ id: trainingShares.id }).from(trainingShares).where(eq(trainingShares.shortCode, candidate)).limit(1))[0];
+    if (!exists) return candidate;
+  }
+  throw new AppError(503, 'Le code court n’a pas pu être généré. Réessayez.', 'SHORT_CODE_UNAVAILABLE');
 }
 
 export async function ownedShare(id: string, trainerId: string) {

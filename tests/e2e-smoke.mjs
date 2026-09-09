@@ -87,7 +87,7 @@ const draft = {
   explanation: 'Un produit ne doit jamais être mélangé sans instruction du fabricant.',
   correction: 'La fiche de données de sécurité et l’étiquette guident le choix.',
   sources: [{ title: 'INRS — Risques chimiques', url: 'https://www.inrs.fr/risques/chimiques.html' }],
-  status: 'published',
+  status: 'draft',
   content: { questions: [{ question: 'Que faut-il consulter avant d’utiliser un produit inconnu ?', choices: ['La fiche de données de sécurité', 'Le planning des congés', 'La météo'], correctIndex: 0, explanation: 'La fiche de données de sécurité décrit les dangers et précautions.' }] },
 };
 const created = await call('/api/activities', { cookie: trainer.cookie, method: 'POST', body: draft });
@@ -129,6 +129,17 @@ assert.ok(result.data.id);
 
 const library = await call('/api/activities', { cookie: trainer.cookie });
 assert.ok(library.data.activities.some((activity) => activity.id === created.data.id && activity.status === 'published'));
+
+const learnerEmail=`apprenant.${Date.now()}@example.test`;
+const learnerPassword='ApprenantLocal#2026!';
+await call('/api/learners',{cookie:admin.cookie,method:'POST',body:{action:'create',firstName:'Nora',lastName:'Test',email:learnerEmail,password:learnerPassword,trainerId:request.trainerId,trainingIds:[firstTrainingId]}});
+const learnerAccount=await call('/api/auth/login',{method:'POST',body:{email:learnerEmail,password:learnerPassword}});
+const learnerHome=await call('/api/learner/me',{cookie:learnerAccount.cookie});
+const learnerAssignment=learnerHome.data.assignments.find((item)=>item.trainingId===firstTrainingId);
+assert.ok(learnerAssignment,'le parcours publié doit apparaître dans l’espace apprenant');
+const learnerStart=await call('/api/learner/progress',{cookie:learnerAccount.cookie,method:'PATCH',body:{assignmentId:learnerAssignment.id,activityId:created.data.id,status:'in_progress'}});
+assert.equal(learnerStart.data.status,'in_progress','le premier exercice doit s’ouvrir même si l’activité était en brouillon avant la publication du parcours');
+
 const results = await call('/api/results', { cookie: trainer.cookie });
 assert.ok(results.data.results.some((row) => row.activityId === created.data.id && row.trainingId === firstTrainingId && row.mainFolderTitle === 'Propreté et hygiène' && row.percentage === 100));
 

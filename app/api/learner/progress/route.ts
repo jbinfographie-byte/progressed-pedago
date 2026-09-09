@@ -1,6 +1,6 @@
 import { and, eq, lt } from 'drizzle-orm';
 import { getDb } from '@/db';
-import { activities, learnerAccountProgress, learnerAssignments, learnerEvaluations, learnerNotifications, learnerResults, learningPathItems, learningPaths } from '@/db/schema';
+import { activities, courseFolders, learnerAccountProgress, learnerAssignments, learnerEvaluations, learnerNotifications, learnerResults, learningPathItems, learningPaths } from '@/db/schema';
 import { audit, requireLearner } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { cleanText, getActiveAssignment } from '@/lib/learner-access';
@@ -11,7 +11,7 @@ export async function PATCH(request:Request){
     const assignment=(await getDb().select().from(learnerAssignments).where(and(eq(learnerAssignments.id,assignmentId),eq(learnerAssignments.learnerId,learner.id))).limit(1))[0];
     if(!assignment)throw new AppError(404,'Ce parcours est introuvable.','ASSIGNMENT_NOT_FOUND');
     await getActiveAssignment(learner.id,assignment.trainingId);
-    const target=(await getDb().select({item:learningPathItems,activity:activities}).from(learningPaths).innerJoin(learningPathItems,eq(learningPathItems.pathId,learningPaths.id)).innerJoin(activities,eq(activities.id,learningPathItems.activityId)).where(and(eq(learningPaths.trainingId,assignment.trainingId),eq(learningPathItems.activityId,activityId),eq(activities.status,'published'))).limit(1))[0];
+    const target=(await getDb().select({item:learningPathItems,activity:activities}).from(learningPaths).innerJoin(courseFolders,eq(courseFolders.id,learningPaths.trainingId)).innerJoin(learningPathItems,eq(learningPathItems.pathId,learningPaths.id)).innerJoin(activities,eq(activities.id,learningPathItems.activityId)).where(and(eq(learningPaths.trainingId,assignment.trainingId),eq(learningPaths.status,'published'),eq(courseFolders.status,'published'),eq(learningPathItems.activityId,activityId))).limit(1))[0];
     if(!target)throw new AppError(404,'Cette activité ne fait pas partie de votre parcours.','ACTIVITY_NOT_ASSIGNED');
     if(target.activity.type==='voice-coach'&&!assignment.voiceAllowed)throw new AppError(403,'Le Coach vocal n’est pas autorisé pour ce parcours.','VOICE_DISABLED');
     if(assignment.orderMode==='sequential'&&target.item.position>0){

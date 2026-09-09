@@ -41,7 +41,13 @@ export async function PATCH(request:Request,context:{params:Promise<{id:string}>
       statements.push(getDb().delete(courseFolderFiles).where(eq(courseFolderFiles.folderId,id)));
       fileIds.forEach((fileId,position)=>statements.push(getDb().insert(courseFolderFiles).values({id:crypto.randomUUID(),folderId:id,fileId,position,createdAt:now})));
     }
-    if (changes.status) statements.push(getDb().update(learningPaths).set({status:changes.status==='published'?'published':'draft',updatedAt:now}).where(eq(learningPaths.id,path.id)));
+    if (changes.status) {
+      statements.push(getDb().update(learningPaths).set({status:changes.status==='published'?'published':'draft',updatedAt:now}).where(eq(learningPaths.id,path.id)));
+      if (changes.status === 'published') {
+        const activityIds = requestedItems?.map((item) => item.activityId) ?? (await getDb().select({ activityId: learningPathItems.activityId }).from(learningPathItems).where(eq(learningPathItems.pathId, path.id))).map((item) => item.activityId);
+        if (activityIds.length) statements.push(getDb().update(activities).set({ status: 'published', updatedAt: now }).where(and(eq(activities.trainerId,user.id),inArray(activities.id,activityIds))));
+      }
+    }
     await getDb().batch(statements as unknown as Parameters<ReturnType<typeof getDb>['batch']>[0]);
     await audit(user.id,'training.updated','course_folder',id,{pathUpdated:requestedItems!==null,previousName:folder.name},request);
     return jsonOk({message:requestedItems!==null?'Le parcours, ses règles et l’ordre des activités sont enregistrés.':'La formation est enregistrée.'});

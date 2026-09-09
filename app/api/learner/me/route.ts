@@ -19,8 +19,8 @@ export async function GET() {
       voiceDurationSeconds:learnerAssignments.voiceDurationSeconds, manualValidation:learnerAssignments.manualValidation,
       trainingName:courseFolders.name, trainingDescription:courseFolders.description, coverImageUrl:courseFolders.coverImageUrl,
       pathId:learningPaths.id, pathName:learningPaths.name,
-    }).from(learnerAssignments).innerJoin(courseFolders,eq(courseFolders.id,learnerAssignments.trainingId)).leftJoin(learningPaths,eq(learningPaths.trainingId,courseFolders.id))
-      .where(and(eq(learnerAssignments.learnerId,learner.id),ne(learnerAssignments.status,'removed'))).orderBy(desc(learnerAssignments.updatedAt));
+    }).from(learnerAssignments).innerJoin(courseFolders,eq(courseFolders.id,learnerAssignments.trainingId)).innerJoin(learningPaths,eq(learningPaths.trainingId,courseFolders.id))
+      .where(and(eq(learnerAssignments.learnerId,learner.id),ne(learnerAssignments.status,'removed'),eq(courseFolders.status,'published'),eq(learningPaths.status,'published'))).orderBy(desc(learnerAssignments.updatedAt));
     const pathIds=assignments.map((item)=>item.pathId).filter((id):id is string=>Boolean(id));
     const items=pathIds.length?await getDb().select({
       id:learningPathItems.id,pathId:learningPathItems.pathId,activityId:learningPathItems.activityId,position:learningPathItems.position,
