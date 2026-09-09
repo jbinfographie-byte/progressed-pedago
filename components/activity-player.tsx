@@ -18,7 +18,7 @@ type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
 type SourceMedia = { kind: 'youtube' | 'vimeo'; url: string; embedUrl: string; title: string; videoId: string } | { kind: 'direct'; url: string; title: string; mimeType: string };
 export type JourneyCompletion = {score?:number;maxScore?:number;answers?:unknown[];durationSeconds?:number};
-export type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;pathItemId?:string;shareToken?:string;onPrevious?:()=>void;onNext?:()=>void;onComplete?:(result?:JourneyCompletion)=>void|Promise<void>;completed?:boolean;timeline?:ReactNode;resourcePanel?:ReactNode};
+export type JourneyContext = {name:string;index:number;total:number;trainingId?:string;pathId?:string;pathItemId?:string;assignmentId?:string;voiceMaxDurationSeconds?:number;shareToken?:string;onPrevious?:()=>void;onNext?:()=>void;onComplete?:(result?:JourneyCompletion)=>void|Promise<void>;completed?:boolean;timeline?:ReactNode;resourcePanel?:ReactNode};
 
 const asItems = (value: unknown): Item[] => Array.isArray(value) ? value.filter((item): item is Item => Boolean(item && typeof item === 'object')) : [];
 const label = (item: Item) => String(item.label ?? item.text ?? item.front ?? 'Élément');
@@ -95,7 +95,7 @@ function Mechanic({ type, content,activity,journey }: { type: ActivityType; cont
   if (type === 'interactive-image') return <InteractiveImage content={content} />;
   if (type === 'flying-fruits') return <FlyingFruits content={content} />;
   if (type === 'external-game') return <ExternalGame content={content} journey={journey} />;
-  if (type === 'voice-coach') return <VoiceCoach activityId={activity.id} content={content} journey={journey} />;
+  if (type === 'voice-coach') return <VoiceCoach key={activity.id} activityId={activity.id} content={content} journey={journey} />;
   return <Classifier content={content} />;
 }
 

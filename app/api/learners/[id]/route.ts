@@ -9,6 +9,7 @@ import { learnerAccessEmail, learnerAccessUrl } from '@/lib/learner-access-email
 import { sendTransactionalEmail } from '@/lib/notifications';
 import { buildResultCorrection } from '@/lib/result-corrections';
 import type { ActivityType } from '@/lib/activity-types';
+import { normalizeVoiceSessionDurationSeconds } from '@/lib/voice-session-duration';
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -128,7 +129,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         orderMode: body.orderMode === 'free' ? 'free' : 'sequential', maxAttempts: Number(body.maxAttempts) || 3,
         resultVisible: body.resultVisible !== false, commentsVisible: body.commentsVisible !== false,
         uploadAllowed: body.uploadAllowed !== false, chatAllowed: body.chatAllowed !== false,
-        voiceAllowed: body.voiceAllowed !== false, voiceDurationSeconds: Number(body.voiceDurationSeconds) || 600,
+        voiceAllowed: body.voiceAllowed !== false, voiceDurationSeconds: normalizeVoiceSessionDurationSeconds(body.voiceDurationSeconds),
         manualValidation: body.manualValidation === true,
       });
       await audit(actor.id, 'learner.training_assigned', 'user', learnerId, { trainingId, trainerId }, request);

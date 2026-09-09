@@ -3,6 +3,7 @@ import { getDb } from '@/db';
 import { learnerAssignments, learnerProfiles, users } from '@/db/schema';
 import type { AuthUser } from '@/lib/auth';
 import { AppError } from '@/lib/http';
+import { normalizeVoiceSessionDurationSeconds } from '@/lib/voice-session-duration';
 
 export function cleanText(value: unknown, max = 500): string {
   return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
@@ -58,7 +59,7 @@ export async function upsertAssignment(input: {
     orderMode: input.orderMode ?? 'sequential' as const, maxAttempts: Math.min(100, Math.max(1, input.maxAttempts ?? 3)),
     resultVisible: input.resultVisible ?? true, commentsVisible: input.commentsVisible ?? true,
     uploadAllowed: input.uploadAllowed ?? true, chatAllowed: input.chatAllowed ?? true,
-    voiceAllowed: input.voiceAllowed ?? true, voiceDurationSeconds: Math.min(7200, Math.max(60, input.voiceDurationSeconds ?? 600)),
+    voiceAllowed: input.voiceAllowed ?? true, voiceDurationSeconds: normalizeVoiceSessionDurationSeconds(input.voiceDurationSeconds),
     manualValidation: input.manualValidation ?? false, updatedAt: now,
   };
   await getDb().insert(learnerAssignments).values(values).onConflictDoUpdate({

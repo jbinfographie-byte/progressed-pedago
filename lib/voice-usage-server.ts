@@ -14,6 +14,7 @@ export async function finalizeVoiceUsage(input: {
   durationSeconds: unknown;
   participantId?: string;
   pathItemId?: string;
+  assignmentId?: string;
   maximumSeconds?: number;
 }) {
   if (!isVoiceUsageSessionId(input.usageSessionId)) throw new AppError(400, 'La session vocale est invalide.', 'VOICE_USAGE_SESSION_INVALID');
@@ -21,7 +22,7 @@ export async function finalizeVoiceUsage(input: {
   if (!started) throw new AppError(404, 'La session vocale à comptabiliser est introuvable.', 'VOICE_USAGE_SESSION_NOT_FOUND');
   let metadata: Record<string, unknown> = {};
   try { metadata = JSON.parse(started.metadataJson) as Record<string, unknown>; } catch { metadata = {}; }
-  if (metadata.activityId !== input.activityId || (input.participantId && metadata.participantId !== input.participantId) || (input.pathItemId && metadata.pathItemId !== input.pathItemId)) throw new AppError(403, 'Cette session vocale ne correspond pas à cette activité.', 'VOICE_USAGE_SESSION_MISMATCH');
+  if (metadata.activityId !== input.activityId || (input.participantId && metadata.participantId !== input.participantId) || (input.pathItemId && metadata.pathItemId !== input.pathItemId) || (input.assignmentId && metadata.assignmentId !== input.assignmentId)) throw new AppError(403, 'Cette session vocale ne correspond pas à cette activité.', 'VOICE_USAGE_SESSION_MISMATCH');
   const config = normalizeVoiceCoachContent(input.activityContent);
   const audioSeconds = normalizeVoiceUsageSeconds({ reportedSeconds: input.durationSeconds, startedAtSeconds: started.createdAt, maximumSeconds: Math.min(config.maxDurationMinutes * 60,input.maximumSeconds??Number.MAX_SAFE_INTEGER) });
   if (audioSeconds < 1) return { recorded: false, audioSeconds: 0 };
@@ -33,7 +34,7 @@ export async function finalizeVoiceUsage(input: {
     creditsCharged: voiceUsageCredits(audioSeconds),
     requestId: `voice-complete:${input.usageSessionId}`,
     status: 'completed',
-    metadata: { activityId: input.activityId, participantId: input.participantId ?? null, pathItemId: input.pathItemId ?? null },
+    metadata: { activityId: input.activityId, participantId: input.participantId ?? null, pathItemId: input.pathItemId ?? null, assignmentId: input.assignmentId ?? null },
   });
   return { recorded, audioSeconds };
 }
