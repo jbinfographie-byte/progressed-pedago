@@ -1,7 +1,6 @@
-const CACHE_NAME = 'progressed-pedago-install-v1';
+const CACHE_NAME = 'progressed-pedago-install-v2';
 const INSTALL_ASSETS = [
   '/manifest.webmanifest',
-  '/favicon.svg',
   '/icons/progressed-pedago-192.png',
   '/icons/progressed-pedago-512.png',
   '/icons/progressed-pedago-180.png',

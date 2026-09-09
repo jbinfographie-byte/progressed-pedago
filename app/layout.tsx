@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title: 'Progressed Pédago', description: 'Une idée ou un PDF devient un cours vivant.', images: ['/og.png'] },
   manifest: '/manifest.webmanifest',
   icons: {
-    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }, { url: '/icons/progressed-pedago-192.png', sizes: '192x192', type: 'image/png' }],
+    icon: [{ url: '/icons/progressed-pedago-192.png', sizes: '192x192', type: 'image/png' }],
     apple: [{ url: '/icons/progressed-pedago-180.png', sizes: '180x180', type: 'image/png' }],
   },
   appleWebApp: { capable: true, title: 'Progressed Pédago', statusBarStyle: 'black-translucent' },

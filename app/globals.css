@@ -54,8 +54,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .app-frame { width: min(1800px, 100%); min-height: 100vh; margin: 0 auto; display: grid; grid-template-columns: 320px 1fr; background: var(--paper); }
 .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 26px; padding: 34px 28px 26px; color: #f6fff9; background: var(--deep-2); }
 .brand { display: flex; align-items: center; gap: 14px; font-size: 1.05rem; line-height: 1.05; }
+.brand-lockup { display: inline-flex; align-items: center; gap: 14px; color: inherit; font-size: 1.05rem; line-height: 1.05; }
+.brand-lockup > span > strong { font-size: 1.45rem; }
 .brand strong { font-size: 1.45rem; }
-.brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px 12px 12px 4px; color: var(--deep-2); background: var(--lime); font-size: 1.8rem; font-weight: 900; }
+.brand-mark { display: block; width: 48px; height: 48px; flex: 0 0 auto; border: 1px solid rgba(255,255,255,.18); border-radius: 13px; object-fit: cover; box-shadow: 0 7px 20px rgba(0,31,24,.16); }
 .sidebar nav { display: grid; gap: 7px; }
 .nav-item { min-height: 54px; display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; border-radius: 13px; padding: 0 16px; color: #d6e6df; font-weight: 650; }
 .nav-item:hover, .nav-item.active { background: rgba(255,255,255,.12); color: white; }
@@ -321,7 +323,7 @@ button.format-card { border: 0; color: var(--ink); text-align: left; }
   .print-sheet { display: block !important; color: #143d35; font-size: 9.5pt; line-height: 1.45; }
   .print-cover { position: relative; overflow: hidden; min-height: 78mm; display: grid; align-content: center; border-radius: 8mm; margin-bottom: 6mm; padding: 12mm; color: white; background: linear-gradient(135deg,#0f493d 0%,#166354 60%,#abc73c 145%); }
   .print-cover::after { content: ''; position: absolute; right: -25mm; bottom: -35mm; width: 100mm; height: 100mm; border: 1px solid rgba(255,255,255,.25); border-radius: 50%; box-shadow: 0 0 0 18mm rgba(255,255,255,.04),0 0 0 36mm rgba(255,255,255,.035); }
-  .print-brand { position: absolute; top: 9mm; left: 11mm; display: flex; gap: 3mm; align-items: center; }.print-brand > span { display: grid; place-items: center; width: 11mm; height: 11mm; border-radius: 3mm; color: #14483d; background: #dff44c; font-size: 17pt; font-weight: 900; }.print-brand div { display: grid; }.print-brand strong { font-size: 11pt; }.print-brand small { color: #cae0d8; font-size: 7pt; }
+  .print-brand { position: absolute; top: 9mm; left: 11mm; display: flex; gap: 3mm; align-items: center; }.print-brand > img { width: 11mm; height: 11mm; border-radius: 3mm; object-fit: cover; }.print-brand div { display: grid; }.print-brand strong { font-size: 11pt; }.print-brand small { color: #cae0d8; font-size: 7pt; }
   .print-format { position: absolute; top: 10mm; right: 11mm; border: 1px solid rgba(255,255,255,.45); border-radius: 999px; padding: 2mm 4mm; font-size: 7.5pt; font-weight: 800; text-transform: uppercase; }
   .print-cover > p { position: relative; z-index: 1; margin: 12mm 0 2mm; color: #dff44c; font-size: 8pt; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }.print-cover h1 { position: relative; z-index: 1; max-width: 145mm; margin: 0; font-family: Georgia,serif; font-size: 28pt; line-height: 1.04; letter-spacing: -.03em; }
   .print-meta { position: relative; z-index: 1; display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 3mm; margin-top: 9mm; }.print-meta span { display: grid; gap: .5mm; border-top: 1px solid rgba(255,255,255,.32); padding-top: 2mm; color: #eff7f3; font-size: 8.5pt; }.print-meta b { color: #bcd6cd; font-size: 6.5pt; letter-spacing: .08em; text-transform: uppercase; }
@@ -714,6 +716,10 @@ button.format-card { border: 0; color: var(--ink); text-align: left; }
 .learner-entry form input { min-height: 48px; padding: 13px 14px; line-height: 1.25; background: #fff; }
 .learner-email-field { margin-top: 2px; }
 .share-renew-note { color: var(--muted); line-height: 1.45; }
+.learner-entry-brand > .brand-lockup { display: inline-flex; width: auto; height: auto; gap: 12px; place-items: unset; color: var(--ink); background: transparent; font-size: 1rem; }
+.learner-entry-brand .brand-mark { width: 50px; height: 50px; }
+.invite-card > .brand-lockup { color: var(--ink); }
+.auth-card > .brand-mark { width: 54px; height: 54px; }
 
 @media (max-width: 820px) {
   .image-manager-layout { grid-template-columns: 1fr; }.image-manager-list { grid-template-columns: repeat(2,minmax(0,1fr)); }.image-manager-list > strong,.image-manager-list > p { grid-column: 1 / -1; }.document-image-actions,.image-source-switch,.editor-mode-switch.three { grid-template-columns: 1fr; }.image-editor-actions .button { flex: 1 1 150px; }.image-editor-actions .button:last-child { margin-left: 0; }.course-image-gallery { padding-inline: 18px; }.course-length-options { grid-template-columns: 1fr; }.course-reader { grid-template-columns: 1fr; margin-inline: 18px; }.course-toc { position: static; max-height: 260px; }.course-definitions dl { grid-template-columns: 1fr; }
