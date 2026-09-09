@@ -6,6 +6,8 @@ const manifest = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest
 const serviceWorker = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../components/progressed-app.tsx', import.meta.url), 'utf8');
 const installSource = readFileSync(new URL('../components/install-app.tsx', import.meta.url), 'utf8');
+const learnerPortalSource = readFileSync(new URL('../components/learner-portal.tsx', import.meta.url), 'utf8');
+const learnerJourneySource = readFileSync(new URL('../components/learner-journey.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8');
 
 test('le manifeste permet une installation autonome avec des icônes adaptées', () => {
@@ -36,4 +38,13 @@ test('le parcours propose une installation directe et un guide multi-appareils',
   assert.match(installSource, /Ajouter au Dock/);
   assert.match(installSource, /display-mode: standalone/);
   assert.match(installSource, /est déjà installé sur cet appareil/);
+  assert.match(installSource, /progressed-pedago:installed/);
+  assert.match(installSource, /aria-modal="false"/);
+});
+
+test('l’installation est disponible dans les deux espaces apprenant', () => {
+  assert.match(learnerPortalSource, /<LearnerInstallCard\/>/);
+  assert.match(learnerJourneySource, /<LearnerInstallCard sharedAccess\/>/);
+  assert.match(installSource, /revenir directement à votre espace apprenant/);
+  assert.match(installSource, /retrouver facilement ce parcours/);
 });

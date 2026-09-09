@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 
 const INSTALL_REQUEST_EVENT = 'progressed-pedago:install-request';
+const INSTALL_STATE_KEY = 'progressed-pedago:installed';
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -48,22 +49,66 @@ function isStandaloneApp() {
   return window.matchMedia('(display-mode: standalone)').matches || navigatorWithStandalone.standalone === true;
 }
 
+function wasInstalledOnThisDevice() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(INSTALL_STATE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function rememberInstallation() {
+  try {
+    window.localStorage.setItem(INSTALL_STATE_KEY, '1');
+  } catch {
+    // Certains navigateurs privés refusent le stockage local ; l’installation reste utilisable.
+  }
+}
+
+function requestInstallation() {
+  window.dispatchEvent(new Event(INSTALL_REQUEST_EVENT));
+}
+
 export function InstallAppButton() {
-  return <button className="nav-item install-app-trigger" type="button" onClick={() => window.dispatchEvent(new Event(INSTALL_REQUEST_EVENT))} aria-haspopup="dialog">
+  return <button className="nav-item install-app-trigger" type="button" onClick={requestInstallation} aria-haspopup="dialog">
     <span className="nav-icon" aria-hidden="true">⇩</span>
     <span className="install-app-default-label">Installer l’application</span>
     <span className="install-app-installed-label">Application déjà installée</span>
   </button>;
 }
 
+export function LearnerInstallButton() {
+  return <button className="learner-install-trigger" type="button" onClick={requestInstallation} aria-haspopup="dialog">
+    <span aria-hidden="true">⇩</span>
+    <span className="install-app-default-label">Installer l’application</span>
+    <span className="install-app-installed-label">Application déjà installée</span>
+  </button>;
+}
+
+export function LearnerInstallCard({ sharedAccess = false }: { sharedAccess?: boolean }) {
+  return <>
+    <section className="learner-install-card" aria-label="Accès rapide à Progressed Pédago">
+      <Image src="/icons/progressed-pedago-192.png" width={58} height={58} alt="" />
+      <div>
+        <strong>Retrouvez Progressed Pédago en un geste</strong>
+        <p>{sharedAccess ? 'Ajoutez l’icône à votre écran d’accueil pour retrouver facilement ce parcours.' : 'Ajoutez l’icône à votre téléphone ou à votre ordinateur pour revenir directement à votre espace apprenant.'}</p>
+      </div>
+      <LearnerInstallButton />
+    </section>
+    <InstallApp />
+  </>;
+}
+
 export function InstallApp() {
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null);
   const [showGuide, setShowGuide] = useState(false);
-  const [installed, setInstalled] = useState(false);
+  const [installed, setInstalled] = useState(() => isStandaloneApp() || wasInstalledOnThisDevice());
   const [alreadyInstalled, setAlreadyInstalled] = useState(false);
   const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
+    if (isStandaloneApp()) rememberInstallation();
     if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).catch(() => undefined);
     const beforeInstall = (event: Event) => {
       event.preventDefault();
@@ -72,6 +117,7 @@ export function InstallApp() {
       setAlreadyInstalled(false);
     };
     const appInstalled = () => {
+      rememberInstallation();
       setInstalled(true);
       setAlreadyInstalled(true);
       setPromptEvent(null);
@@ -85,6 +131,15 @@ export function InstallApp() {
       window.removeEventListener('appinstalled', appInstalled);
     };
   }, []);
+
+  useEffect(() => {
+    if (!showGuide) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowGuide(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showGuide]);
 
   useEffect(() => {
     const requestInstall = () => {
@@ -105,6 +160,7 @@ export function InstallApp() {
           await promptEvent.prompt();
           const choice = await promptEvent.userChoice;
           if (choice.outcome === 'accepted') {
+            rememberInstallation();
             setInstalled(true);
             setAlreadyInstalled(true);
             setFeedback('Progressed Pédago est maintenant installé. Son icône est disponible depuis les applications de votre appareil.');
@@ -136,8 +192,8 @@ export function InstallApp() {
 
   const guide = installationGuide();
 
-  return <div className="install-app-backdrop" role="dialog" aria-modal="true" aria-labelledby="install-app-title">
-    <section className="install-app-dialog">
+  return <div className="install-app-layer">
+    <section className="install-app-dialog" role="dialog" aria-modal="false" aria-labelledby="install-app-title">
       <button className="install-app-close" type="button" onClick={() => setShowGuide(false)} aria-label="Fermer">×</button>
       <Image src="/icons/progressed-pedago-192.png" width={88} height={88} alt="Icône Progressed Pédago" priority />
       <p className="overline">Accès rapide</p>

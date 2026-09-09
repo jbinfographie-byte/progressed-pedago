@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityPlayer, type JourneyCompletion } from '@/components/activity-player';
+import { LearnerInstallCard } from '@/components/install-app';
 import { ACTIVITY_TYPES, type ActivityType } from '@/lib/activity-types';
 
 type ProgressState={pathItemId:string;status:'not_started'|'in_progress'|'completed'|'passed'|'retry';score:number|null;maxScore:number|null;attempts:number};
@@ -24,7 +25,7 @@ export function LearnerJourney({token}:{token:string}){
   const complete=async(result?:JourneyCompletion)=>{if(!current||busy)return;setBusy(true);try{const update=await publicApi<{progressPercent:number;status:'completed'|'passed'|'retry';message:string}>(`${endpoint}/progress`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pathItemId:current.pathItemId,status:result?.score!=null&&result.maxScore?Math.round(result.score/result.maxScore*100)>=current.minScore?'passed':'retry':'completed',...result})});setNotice(`${update.message} Le bilan reste affiché ; utilisez « Activité suivante » lorsque vous êtes prêt.`);await load();}catch(reason){setNotice(reason instanceof Error?reason.message:'Progression non enregistrée.');}finally{setBusy(false);}};
   if(loading)return <main className="learner-loading"><span>Progressed Pédago</span><strong>Préparation de votre parcours…</strong></main>;
   if(error||!data)return <main className="learner-error"><span>!</span><h1>Accès au parcours impossible</h1><p>{error}</p><small>Demandez au formateur un nouveau lien si nécessaire.</small></main>;
-  if(!participant)return <LearnerEntry data={data} endpoint={endpoint} busy={busy} setBusy={setBusy} onStarted={async(code)=>{setResumeCode(code);await load();}}/>;
+  if(!participant)return <div className="learner-entry-with-install"><LearnerEntry data={data} endpoint={endpoint} busy={busy} setBusy={setBusy} onStarted={async(code)=>{setResumeCode(code);await load();}}/><LearnerInstallCard sharedAccess/></div>;
   const timeline=<JourneyTimeline data={data} activeIndex={activeIndex??0} stateByItem={stateByItem} isUnlocked={isUnlocked} onOpen={(index)=>void openStep(index)} onFinish={()=>setActiveIndex(null)}/>;
   const resources=data.resources.filter((resource)=>!resource.activityId||resource.activityId===current?.activityId);
   if(current)return <><ActivityPlayer key={current.pathItemId} activity={{...current,id:current.activityId,type:current.type as ActivityType,audience:current.audience??undefined,level:current.level as 'debutant'|'intermediaire'|'avance'}} onClose={()=>setActiveIndex(null)} journey={{name:data.training.name,index:activeIndex??0,total:items.length,trainingId:data.training.id,pathId:data.path.id,pathItemId:current.pathItemId,shareToken:token,onPrevious:(activeIndex??0)>0&&isUnlocked((activeIndex??0)-1)?()=>void openStep((activeIndex??0)-1):undefined,onNext:(activeIndex??0)<items.length-1&&isUnlocked((activeIndex??0)+1)?()=>void openStep((activeIndex??0)+1):undefined,onComplete:complete,completed:isCompleted(current),timeline,resourcePanel:<JourneyResources resources={resources}/>}}/>{notice&&<div className="learner-notice" role="status">{busy?'Enregistrement…':notice}</div>}</>;
