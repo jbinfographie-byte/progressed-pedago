@@ -28,7 +28,7 @@ export async function ensurePlanCatalog(): Promise<void> {
   }
 }
 
-export async function ensureUserSubscription(userId: string, role: 'admin' | 'trainer'): Promise<void> {
+export async function ensureUserSubscription(userId: string, role: 'admin' | 'trainer' | 'learner'): Promise<void> {
   await ensurePlanCatalog();
   const existing = await getDb().select({ userId: userSubscriptions.userId }).from(userSubscriptions).where(eq(userSubscriptions.userId, userId)).limit(1);
   if (existing.length) return;
@@ -55,7 +55,7 @@ async function resetUsageIfNeeded(userId: string): Promise<void> {
   if (resetMonth) { const monthlyCredits = subscription.creditsMonthlyOverride ?? plan.monthlyCredits; await getDb().insert(creditTransactions).values({ id: crypto.randomUUID(), userId, amount: monthlyCredits, balanceAfter: monthlyCredits + subscription.extraCredits, kind: 'monthly_reset', label: `Remise à zéro ${month}` }); }
 }
 
-export async function getUserEntitlement(userId: string, role: 'admin' | 'trainer') {
+export async function getUserEntitlement(userId: string, role: 'admin' | 'trainer' | 'learner') {
   await ensureUserSubscription(userId, role); await resetUsageIfNeeded(userId);
   const row = (await getDb().select({ subscription: userSubscriptions, plan: subscriptionPlans }).from(userSubscriptions).innerJoin(subscriptionPlans, eq(userSubscriptions.planId, subscriptionPlans.id)).where(eq(userSubscriptions.userId, userId)).limit(1))[0];
   if (!row) throw new AppError(500, 'La formule du compte est indisponible.', 'SUBSCRIPTION_MISSING');
@@ -79,13 +79,13 @@ export async function getUserEntitlement(userId: string, role: 'admin' | 'traine
   };
 }
 
-export async function assertSubscriptionFeature(userId: string, role: 'admin' | 'trainer', feature: SubscriptionFeature) {
+export async function assertSubscriptionFeature(userId: string, role: 'admin' | 'trainer' | 'learner', feature: SubscriptionFeature) {
   const entitlement = await getUserEntitlement(userId, role);
   if (!entitlement.features[feature]) throw new AppError(403, `${FEATURE_LABELS[feature]} n’est pas inclus dans votre formule actuelle.`, 'PLAN_FEATURE_REQUIRED');
   return entitlement;
 }
 
-export async function preflightAiUsage(userId: string, role: 'admin' | 'trainer', feature: SubscriptionFeature, options: { voice?: boolean; minimumCredits?: number } = {}) {
+export async function preflightAiUsage(userId: string, role: 'admin' | 'trainer' | 'learner', feature: SubscriptionFeature, options: { voice?: boolean; minimumCredits?: number } = {}) {
   const entitlement = await assertSubscriptionFeature(userId, role, feature);
   const now = Math.floor(Date.now() / 1000);
   const settings = await getAiSecuritySettings();

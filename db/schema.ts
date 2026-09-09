@@ -11,7 +11,7 @@ export const users = sqliteTable('users', {
   lastName: text('last_name'),
   passwordHash: text('password_hash').notNull(),
   passwordSalt: text('password_salt').notNull(),
-  role: text('role', { enum: ['admin', 'trainer'] }).notNull().default('trainer'),
+  role: text('role', { enum: ['admin', 'trainer', 'learner'] }).notNull().default('trainer'),
   status: text('status', { enum: ['pending', 'active', 'suspended', 'revoked'] }).notNull().default('pending'),
   activatedAt: integer('activated_at'),
   lastLoginAt: integer('last_login_at'),
@@ -350,8 +350,15 @@ export const trainingShares = sqliteTable('training_shares', {
   identityMode: text('identity_mode', { enum: ['name', 'pseudonym', 'learner_code', 'anonymous'] }).notNull().default('name'),
   status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
   sessionOpen: integer('session_open', { mode: 'boolean' }).notNull().default(true),
+  startsAt: integer('starts_at'),
   expiresAt: integer('expires_at'),
   maxAccesses: integer('max_accesses'),
+  requireEmail: integer('require_email', { mode: 'boolean' }).notNull().default(false),
+  saveProgress: integer('save_progress', { mode: 'boolean' }).notNull().default(true),
+  saveTranscript: integer('save_transcript', { mode: 'boolean' }).notNull().default(false),
+  allowSubmission: integer('allow_submission', { mode: 'boolean' }).notNull().default(false),
+  showResult: integer('show_result', { mode: 'boolean' }).notNull().default(true),
+  oneTime: integer('one_time', { mode: 'boolean' }).notNull().default(false),
   accessCount: integer('access_count').notNull().default(0),
   createdAt: integer('created_at').notNull().default(now),
   updatedAt: integer('updated_at').notNull().default(now),
@@ -369,6 +376,8 @@ export const learnerParticipants = sqliteTable('learner_participants', {
   browserTokenHash: text('browser_token_hash').notNull(),
   resumeCodeHash: text('resume_code_hash').notNull(),
   displayName: text('display_name').notNull().default('Apprenant anonyme'),
+  learnerId: text('learner_id').references(() => users.id, { onDelete: 'set null' }),
+  email: text('email'),
   identityKind: text('identity_kind', { enum: ['name', 'pseudonym', 'learner_code', 'anonymous'] }).notNull().default('anonymous'),
   lastPathItemId: text('last_path_item_id').references(() => learningPathItems.id, { onDelete: 'set null' }),
   progressPercent: integer('progress_percent').notNull().default(0),
@@ -379,6 +388,7 @@ export const learnerParticipants = sqliteTable('learner_participants', {
   uniqueIndex('uq_learner_participants_browser').on(table.shareId, table.browserTokenHash),
   uniqueIndex('uq_learner_participants_resume').on(table.shareId, table.resumeCodeHash),
   index('idx_learner_participants_share_seen').on(table.shareId, table.lastSeenAt),
+  index('idx_learner_participants_learner').on(table.learnerId, table.lastSeenAt),
   check('ck_learner_participants_progress', sql`${table.progressPercent} BETWEEN 0 AND 100`),
 ]);
 
@@ -447,6 +457,157 @@ export const learnerResults = sqliteTable('learner_results', {
   score: integer('score').notNull(), maxScore: integer('max_score').notNull(), percentage: integer('percentage').notNull(), durationSeconds: integer('duration_seconds').notNull().default(0),
   attempt: integer('attempt').notNull().default(1), selfEvaluation: text('self_evaluation'), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_results_owner_activity_date').on(table.trainerId, table.activityId, table.createdAt), index('idx_results_owner_training_date').on(table.trainerId, table.trainingId, table.createdAt), index('idx_results_share_participant').on(table.shareId, table.participantId, table.createdAt), check('ck_results_score', sql`${table.score} >= 0 AND ${table.maxScore} > 0`), check('ck_results_percentage', sql`${table.percentage} BETWEEN 0 AND 100`)]);
+
+export const learnerProfiles = sqliteTable('learner_profiles', {
+  userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  organization: text('organization').notNull().default(''),
+  groupName: text('group_name').notNull().default(''),
+  assignedTrainerId: text('assigned_trainer_id').references(() => users.id, { onDelete: 'set null' }),
+  privacyAcceptedAt: integer('privacy_accepted_at'),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [index('idx_learner_profiles_trainer_group').on(table.assignedTrainerId, table.groupName)]);
+
+export const learnerInvitations = sqliteTable('learner_invitations', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull(),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  organization: text('organization').notNull().default(''),
+  groupName: text('group_name').notNull().default(''),
+  assignedTrainerId: text('assigned_trainer_id').references(() => users.id, { onDelete: 'set null' }),
+  trainingIdsJson: text('training_ids_json').notNull().default('[]'),
+  tokenHash: text('token_hash').notNull(),
+  status: text('status', { enum: ['pending', 'used', 'revoked', 'expired'] }).notNull().default('pending'),
+  expiresAt: integer('expires_at').notNull(),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  usedBy: text('used_by').references(() => users.id, { onDelete: 'set null' }),
+  usedAt: integer('used_at'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_invitations_token').on(table.tokenHash),
+  index('idx_learner_invitations_email_status').on(table.email, table.status, table.expiresAt),
+]);
+
+export const learnerAssignments = sqliteTable('learner_assignments', {
+  id: text('id').primaryKey(),
+  learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  trainingId: text('training_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  shareId: text('share_id').references(() => trainingShares.id, { onDelete: 'set null' }),
+  startsAt: integer('starts_at'),
+  dueAt: integer('due_at'),
+  status: text('status', { enum: ['active', 'paused', 'completed', 'removed'] }).notNull().default('active'),
+  orderMode: text('order_mode', { enum: ['sequential', 'free'] }).notNull().default('sequential'),
+  maxAttempts: integer('max_attempts').notNull().default(3),
+  resultVisible: integer('result_visible', { mode: 'boolean' }).notNull().default(true),
+  commentsVisible: integer('comments_visible', { mode: 'boolean' }).notNull().default(true),
+  uploadAllowed: integer('upload_allowed', { mode: 'boolean' }).notNull().default(true),
+  chatAllowed: integer('chat_allowed', { mode: 'boolean' }).notNull().default(true),
+  voiceAllowed: integer('voice_allowed', { mode: 'boolean' }).notNull().default(true),
+  voiceDurationSeconds: integer('voice_duration_seconds').notNull().default(600),
+  manualValidation: integer('manual_validation', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_assignment').on(table.learnerId, table.trainingId),
+  index('idx_learner_assignments_trainer_status').on(table.trainerId, table.status, table.updatedAt),
+  index('idx_learner_assignments_learner_status').on(table.learnerId, table.status, table.updatedAt),
+  check('ck_learner_assignment_attempts', sql`${table.maxAttempts} BETWEEN 1 AND 100`),
+  check('ck_learner_assignment_voice_duration', sql`${table.voiceDurationSeconds} BETWEEN 60 AND 7200`),
+]);
+
+export const learnerEvaluations = sqliteTable('learner_evaluations', {
+  id: text('id').primaryKey(),
+  assignmentId: text('assignment_id').notNull().references(() => learnerAssignments.id, { onDelete: 'cascade' }),
+  learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['submitted', 'reviewing', 'validated', 'retry'] }).notNull().default('submitted'),
+  score: integer('score'),
+  maxScore: integer('max_score'),
+  publicComment: text('public_comment').notNull().default(''),
+  internalNote: text('internal_note').notNull().default(''),
+  attempt: integer('attempt').notNull().default(1),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_evaluation_attempt').on(table.assignmentId, table.activityId, table.attempt),
+  index('idx_learner_evaluations_trainer_status').on(table.trainerId, table.status, table.updatedAt),
+  check('ck_learner_evaluation_scores', sql`(${table.score} IS NULL OR ${table.score} >= 0) AND (${table.maxScore} IS NULL OR ${table.maxScore} > 0)`),
+]);
+
+export const learnerAccountProgress = sqliteTable('learner_account_progress', {
+  id: text('id').primaryKey(),
+  assignmentId: text('assignment_id').notNull().references(() => learnerAssignments.id, { onDelete: 'cascade' }),
+  learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['not_started', 'in_progress', 'submitted', 'reviewing', 'validated', 'completed', 'retry'] }).notNull().default('not_started'),
+  score: integer('score'),
+  maxScore: integer('max_score'),
+  attempts: integer('attempts').notNull().default(0),
+  durationSeconds: integer('duration_seconds').notNull().default(0),
+  answersJson: text('answers_json').notNull().default('[]'),
+  startedAt: integer('started_at'),
+  completedAt: integer('completed_at'),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_account_progress').on(table.assignmentId, table.activityId),
+  index('idx_learner_account_progress_learner').on(table.learnerId, table.updatedAt),
+  check('ck_learner_account_progress_attempts', sql`${table.attempts} >= 0`),
+  check('ck_learner_account_progress_duration', sql`${table.durationSeconds} >= 0`),
+]);
+
+export const learnerEvaluationHistory = sqliteTable('learner_evaluation_history', {
+  id: text('id').primaryKey(),
+  evaluationId: text('evaluation_id').notNull().references(() => learnerEvaluations.id, { onDelete: 'cascade' }),
+  actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  beforeJson: text('before_json').notNull().default('{}'),
+  afterJson: text('after_json').notNull().default('{}'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [index('idx_learner_evaluation_history').on(table.evaluationId, table.createdAt)]);
+
+export const learnerSubmissions = sqliteTable('learner_submissions', {
+  id: text('id').primaryKey(),
+  assignmentId: text('assignment_id').notNull().references(() => learnerAssignments.id, { onDelete: 'cascade' }),
+  learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  activityId: text('activity_id').references(() => activities.id, { onDelete: 'set null' }),
+  objectKey: text('object_key').notNull(),
+  originalName: text('original_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  status: text('status', { enum: ['submitted', 'reviewing', 'validated', 'retry'] }).notNull().default('submitted'),
+  learnerComment: text('learner_comment').notNull().default(''),
+  trainerComment: text('trainer_comment').notNull().default(''),
+  createdAt: integer('created_at').notNull().default(now),
+  updatedAt: integer('updated_at').notNull().default(now),
+}, (table) => [
+  uniqueIndex('uq_learner_submissions_object').on(table.objectKey),
+  index('idx_learner_submissions_assignment_status').on(table.assignmentId, table.status, table.updatedAt),
+  check('ck_learner_submissions_size', sql`${table.sizeBytes} BETWEEN 1 AND 26214400`),
+]);
+
+export const learnerMessages = sqliteTable('learner_messages', {
+  id: text('id').primaryKey(),
+  learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  authorId: text('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  readAt: integer('read_at'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [index('idx_learner_messages_conversation').on(table.learnerId, table.trainerId, table.createdAt)]);
+
+export const learnerNotifications = sqliteTable('learner_notifications', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  link: text('link').notNull().default(''),
+  readAt: integer('read_at'),
+  createdAt: integer('created_at').notNull().default(now),
+}, (table) => [index('idx_learner_notifications_user_read').on(table.userId, table.readAt, table.createdAt)]);
 
 export const knowledgeFolders = sqliteTable('knowledge_folders', {
   id: text('id').primaryKey(),

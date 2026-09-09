@@ -15,7 +15,7 @@ export type AuthUser = {
   displayName: string | null;
   firstName: string | null;
   lastName: string | null;
-  role: 'admin' | 'trainer';
+  role: 'admin' | 'trainer' | 'learner';
   status: 'pending' | 'active' | 'suspended' | 'revoked';
   permissions: TrainerPermissions;
 };
@@ -49,8 +49,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   return { ...user, permissions: await getPermissionsForUser(user) };
 }
 
-export async function getPermissionsForUser(user: { id: string; role: 'admin' | 'trainer' }): Promise<TrainerPermissions> {
+export async function getPermissionsForUser(user: { id: string; role: 'admin' | 'trainer' | 'learner' }): Promise<TrainerPermissions> {
   if (user.role === 'admin') return { ...ALL_PERMISSIONS };
+  if (user.role === 'learner') return Object.fromEntries(Object.keys(ALL_PERMISSIONS).map((key) => [key, false])) as TrainerPermissions;
   const row = (await getDb().select({ permissionsJson: trainerPermissions.permissionsJson }).from(trainerPermissions).where(eq(trainerPermissions.trainerId, user.id)).limit(1))[0];
   return row ? normalizePermissions(row.permissionsJson) : normalizePermissions(null);
 }
@@ -67,6 +68,18 @@ export async function requireUser(): Promise<AuthUser> {
 export async function requireAdmin(): Promise<AuthUser> {
   const user = await requireUser();
   if (user.role !== 'admin') throw new AppError(403, 'Cette action est réservée à l’administration.', 'ADMIN_REQUIRED');
+  return user;
+}
+
+export async function requireStaff(): Promise<AuthUser> {
+  const user = await requireUser();
+  if (user.role === 'learner') throw new AppError(403, 'Cette action est réservée à l’équipe pédagogique.', 'STAFF_REQUIRED');
+  return user;
+}
+
+export async function requireLearner(): Promise<AuthUser> {
+  const user = await requireUser();
+  if (user.role !== 'learner') throw new AppError(403, 'Cette page est réservée à votre espace apprenant.', 'LEARNER_REQUIRED');
   return user;
 }
 

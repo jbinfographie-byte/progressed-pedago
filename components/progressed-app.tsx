@@ -11,11 +11,13 @@ import { ApplicationsConnectionsView } from '@/components/applications-connectio
 import { HelpCenter } from '@/components/help-center';
 import { AdminSupportCenter } from '@/components/admin-support-center';
 import { InstallApp, InstallAppButton } from '@/components/install-app';
+import { LearnerPortal } from '@/components/learner-portal';
+import { LearnerManagementView } from '@/components/learner-management-view';
 import { detectPermissionLevel, PERMISSION_DEFINITIONS, PERMISSION_PRESETS, type PermissionLevel, type TrainerPermissions } from '@/lib/permissions';
 import type { ResultCorrection } from '@/lib/result-corrections';
 import { FEATURE_LABELS, SUBSCRIPTION_FEATURES, type PlanFeatures, type SubscriptionFeature } from '@/lib/subscriptions';
 
-type User = { id: string; email: string; displayName: string | null; firstName: string | null; lastName: string | null; role: 'admin' | 'trainer'; status: string; permissions: TrainerPermissions };
+type User = { id: string; email: string; displayName: string | null; firstName: string | null; lastName: string | null; role: 'admin' | 'trainer' | 'learner'; status: string; permissions: TrainerPermissions };
 type PlatformUser = { email: string; displayName: string };
 type ActivityRecord = ActivityDraft & { id: string; status: 'draft' | 'published'; qualityScore: number; updatedAt: number };
 type TrainerAccessRow = {
@@ -43,7 +45,7 @@ type BillingPlan = { id:string;name:string;priceCents:number;currency:string;mon
 type BillingMember = { id:string;email:string;displayName:string|null;firstName:string|null;lastName:string|null;role:'admin'|'trainer';status:string;createdAt:number;entitlement:{planId:string;planName:string;subscriptionStatus:string;startsAt:number;renewsAt:number|null;endsAt:number|null;resetAt:number;updatedAt:number;unlimited:boolean;creditsRemaining:number;voiceSecondsMonth:number;voiceSecondsDay:number;monthlyVoiceLimit:number;dailyVoiceLimit:number;apiCostMicrosMonth:number;apiBudgetMicros:number;voicePercent:number;apiPercent:number;features:PlanFeatures;overrides:Array<{feature:string;allowed:boolean;expiresAt:number|null}>};history:Array<{id:string;action:string;fromPlanId:string|null;toPlanId:string|null;createdAt:number}>;usage:Array<{id:string;feature:string;audioSeconds:number;creditsCharged:number;createdAt:number}> };
 type AdminBillingData = { plans:BillingPlan[];members:BillingMember[];totals:{users:number;active:number;suspended:number;voiceSeconds:number;apiCostMicros:number;creditsUsed:number;nearLimit:number;byPlan:Record<string,number>};aiSecurity:{requestsPerMinute:number;requestsPerDay:number;globalRequestsPerDay:number;globalDailyBudgetMicros:number;maxJsonBytes:number} };
 type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { message: string; code: string } };
-type Section = 'dashboard' | 'activities' | 'voice-coach' | 'documents' | 'results' | 'connections' | 'admin';
+type Section = 'dashboard' | 'activities' | 'voice-coach' | 'documents' | 'results' | 'learners' | 'connections' | 'admin';
 
 const tones = ['mint','blue','peach','aqua'];
 const symbols = ['?','↕','✓','▦','◌','ABC','▧','◫','⌨','≡','▤','⇄','◎','★','▣','⌘','◧','↔','A','●','◉','➜','▥','◔','✺','?','▦','⌁','◉'];
@@ -62,7 +64,7 @@ export function ProgressedApp({ initialAuthOpen = false,initialResetToken = '',i
   const [toast,setToast] = useState(''); const [loading,setLoading] = useState(true); const [query,setQuery] = useState(''); const [resultStats,setResultStats] = useState({ count:0, average:null as number | null });
   const notify = useCallback((message: string) => { setToast(message); window.setTimeout(() => setToast(''), 3200); }, []);
   const loadActivities = useCallback(async () => { try { const [activityData,resultData] = await Promise.all([api<{ activities: ActivityRecord[] }>('/api/activities'),api<{ results: Array<{ percentage:number }> }>('/api/results')]); setActivities(activityData.activities); setResultStats({ count:resultData.results.length, average:resultData.results.length ? Math.round(resultData.results.reduce((sum,row) => sum + Number(row.percentage),0) / resultData.results.length) : null }); } catch (error) { notify(error instanceof Error ? error.message : 'Chargement impossible.'); } }, [notify]);
-  useEffect(() => { api<{ user: User | null }>('/api/auth/me').then((data) => { setUser(data.user); if (data.user) { setAuthOpen(false); void loadActivities(); } }).catch(() => setUser(null)).finally(() => setLoading(false)); }, [loadActivities]);
+  useEffect(() => { api<{ user: User | null }>('/api/auth/me').then((data) => { setUser(data.user); if (data.user) { setAuthOpen(false); if(data.user.role !== 'learner') void loadActivities(); } }).catch(() => setUser(null)).finally(() => setLoading(false)); }, [loadActivities]);
   const filtered = useMemo(() => activities.filter((activity) => `${activity.title} ${activity.theme}`.toLowerCase().includes(query.toLowerCase())), [activities,query]);
   const resultsCount = resultStats.count;
   const openAuth = (mode: 'login'|'register' = 'login') => { setAuthMode(mode); setAuthOpen(true); };
@@ -73,6 +75,7 @@ export function ProgressedApp({ initialAuthOpen = false,initialResetToken = '',i
   const togglePublish = async (activity: ActivityRecord) => { try { await api(`/api/activities/${activity.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...activity, status: activity.status === 'published' ? 'draft' : 'published' }) }); await loadActivities(); notify(activity.status === 'published' ? 'Activité remise en brouillon.' : 'Activité publiée.'); } catch (error) { notify(error instanceof Error ? error.message : 'Modification impossible.'); } };
   const renameActivity = async (title:string) => { if(!renamingActivity)return; try { await api(`/api/activities/${renamingActivity.id}`, { method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title}) }); await loadActivities(); setRenamingActivity(null); notify(`Le cours ou jeu pédagogique s’appelle maintenant « ${title.trim()} ».`); } catch(error) { notify(error instanceof Error ? error.message : 'Renommage impossible.'); } };
 
+  if(user?.role==='learner')return <LearnerPortal onLogout={async()=>{await api('/api/auth/logout',{method:'POST'});setUser(null);setSection('dashboard');setAuthOpen(true);notify('Vous êtes déconnecté.');}}/>;
   return <main className="app-frame">
     <Sidebar user={user} section={section} counts={{ activities: activities.length, results: resultsCount }} onSelect={selectSection} onCreate={() => user ? openStudio() : openAuth('login')} onLogout={async () => { await api('/api/auth/logout',{ method:'POST' }); setUser(null); setActivities([]); setResultStats({count:0,average:null}); setSection('dashboard'); notify('Vous êtes déconnecté.'); }} />
     <section className="workspace" id="top">
@@ -83,11 +86,12 @@ export function ProgressedApp({ initialAuthOpen = false,initialResetToken = '',i
       {section === 'voice-coach' && <VoiceCoachLibraryView activities={activities.filter((activity)=>activity.type==='voice-coach')} onCreate={()=>setManualType('voice-coach')} onPlay={setPlaying} onEdit={setEditingActivity} onRename={setRenamingActivity} onDelete={removeActivity} onPublish={togglePublish}/>}
       {section === 'documents' && user && <DocumentLibraryView notify={notify} />}
       {section === 'results' && user && <ResultsView activities={activities} notify={notify} />}
+      {section === 'learners' && user && <LearnerManagementView isAdmin={user.role==='admin'} notify={notify}/>}
       {section === 'connections' && user && <ApplicationsConnectionsView notify={notify} />}
       {section === 'admin' && user?.role === 'admin' && <AdminView notify={notify} />}
       {section === 'admin' && user?.role !== 'admin' && <EmptyState title="Administration non disponible" copy="Cette rubrique est réservée au compte administrateur." />}
     </section>
-    {authOpen && <AuthDialog resetToken={initialResetToken} initialMode={authMode} platformUser={initialPlatformUser} adminInitialized={initialAdminInitialized} onClose={() => setAuthOpen(false)} onAuthenticated={(next) => { setUser(next); setAuthOpen(false); if (next.role === 'admin') setSection('admin'); void loadActivities(); notify(next.role === 'admin' ? 'Compte administrateur connecté. Vous pouvez piloter les accès.' : 'Connexion réussie.'); }} />}
+    {authOpen && <AuthDialog resetToken={initialResetToken} initialMode={authMode} platformUser={initialPlatformUser} adminInitialized={initialAdminInitialized} onClose={() => setAuthOpen(false)} onAuthenticated={(next) => { setUser(next); setAuthOpen(false); if (next.role === 'admin') setSection('admin'); else if(next.role==='learner')setSection('dashboard'); if(next.role!=='learner')void loadActivities(); notify(next.role === 'admin' ? 'Compte administrateur connecté. Vous pouvez piloter les accès.' : next.role==='learner'?'Bienvenue dans votre espace apprenant.':'Connexion réussie.'); }} />}
     {studioOpen && <AiStudioDialog defaults={studioDefaults} onClose={() => {setStudioOpen(false);setStudioDefaults(null);}} onCreated={async (message) => { setStudioOpen(false);setStudioDefaults(null);await loadActivities();setSection('activities');notify(message); }} />}
     {manualType && <ManualActivityDialog type={manualType} onClose={() => setManualType(null)} onCreated={async () => { setManualType(null); await loadActivities(); setSection('activities'); notify('L’activité et son support pédagogique sont enregistrés.'); }} />}
     {editingActivity && <ManualActivityDialog type={editingActivity.type} initial={editingActivity} onClose={() => setEditingActivity(null)} onCreated={async () => { setEditingActivity(null); await loadActivities(); setSection('activities'); notify('Les modifications de l’activité sont enregistrées.'); }} />}
@@ -100,7 +104,7 @@ export function ProgressedApp({ initialAuthOpen = false,initialResetToken = '',i
 }
 
 function Sidebar({ user,section,counts,onSelect,onCreate,onLogout }: { user: User | null; section: Section; counts: { activities: number; results: number }; onSelect: (section: Section) => void; onCreate: () => void; onLogout: () => void }) {
-  const items: Array<{ id: Section; label: string; icon: string; badge?: number }> = [{ id:'dashboard',label:'Tableau de bord',icon:'⌂'},{id:'activities',label:'Activités',icon:'◇',badge:counts.activities},{id:'voice-coach',label:'Coach vocal – Langues',icon:'◉'},{id:'documents',label:'Ma base documentaire',icon:'▤'},{id:'results',label:'Résultats',icon:'▥',badge:counts.results},{id:'connections',label:'Applications et connexions',icon:'↗'},{id:'admin',label:'Administration',icon:'⬡'}];
+  const items: Array<{ id: Section; label: string; icon: string; badge?: number }> = [{ id:'dashboard',label:'Tableau de bord',icon:'⌂'},{id:'activities',label:'Activités',icon:'◇',badge:counts.activities},{id:'voice-coach',label:'Coach vocal – Langues',icon:'◉'},{id:'documents',label:'Ma base documentaire',icon:'▤'},{id:'results',label:'Résultats',icon:'▥',badge:counts.results},{id:'learners',label:user?.role==='admin'?'Gestion des apprenants':'Mes apprenants',icon:'♙'},{id:'connections',label:'Applications et connexions',icon:'↗'},{id:'admin',label:'Administration',icon:'⬡'}];
   return <aside className="sidebar"><button className="brand brand-button" type="button" onClick={() => onSelect('dashboard')} aria-label="Progressed Pédago, accueil"><span className="brand-mark">P</span><span>Progressed<br /><strong>Pédago</strong></span></button><nav aria-label="Navigation principale">{items.map((item) => <button className={`nav-item ${section === item.id ? 'active' : ''}`} type="button" onClick={() => onSelect(item.id)} key={item.id}><span className="nav-icon" aria-hidden="true">{item.icon}</span><span>{item.label}</span>{typeof item.badge === 'number' && <span className="nav-badge">{item.badge}</span>}</button>)}<InstallAppButton /></nav><section className="ai-card"><span className="sparkle">✦</span><h2>Assistant pédagogique IA</h2><p>Partez d’une idée, d’un PDF, d’une vidéo ou d’un lien pour créer le cours, l’activité et le PowerPoint.</p><button className="button lime full" type="button" onClick={onCreate}>Créer avec l’IA</button></section><div className="profile"><span className="avatar">{user ? initials(user.displayName ?? user.email) : 'PP'}</span><span><strong>{user?.displayName ?? 'Espace sécurisé'}</strong><small>{user ? (user.role === 'admin' ? 'Administrateur' : 'Formateur') : 'Non connecté'}</small></span>{user && <button type="button" onClick={onLogout} aria-label="Se déconnecter">↪</button>}</div></aside>;
 }
 

@@ -16,7 +16,9 @@ export function normalizeShareSettings(body: Record<string, unknown>) {
   const rawExpiry = String(body.expiresAt ?? '').trim(); let expiresAt: number | null = null;
   if (rawExpiry) { const value = Math.floor(new Date(rawExpiry).getTime() / 1000); if (!Number.isFinite(value) || value <= Math.floor(Date.now() / 1000) + 300) throw new AppError(400, 'Choisissez une expiration située dans plus de cinq minutes.', 'INVALID_SHARE_EXPIRY'); expiresAt = value; }
   const rawLimit = Number(body.maxAccesses); const maxAccesses = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10_000) : null;
-  return { mode, liveActivityId, identityMode, expiresAt, maxAccesses, sessionOpen: mode === 'home' || body.sessionOpen !== false };
+  const rawStart=String(body.startsAt??'').trim();let startsAt:number|null=null;if(rawStart){const value=Math.floor(new Date(rawStart).getTime()/1000);if(!Number.isFinite(value))throw new AppError(400,'La date de début est invalide.','INVALID_SHARE_START');startsAt=value;}
+  if(startsAt&&expiresAt&&startsAt>=expiresAt)throw new AppError(400,'La date de début doit précéder la date d’expiration.','INVALID_SHARE_DATES');
+  return { mode, liveActivityId, identityMode, startsAt, expiresAt, maxAccesses, requireEmail:body.requireEmail===true, saveProgress:body.saveProgress!==false, saveTranscript:body.saveTranscript===true, allowSubmission:body.allowSubmission===true, showResult:body.showResult!==false, oneTime:body.oneTime===true, sessionOpen: mode === 'home' || body.sessionOpen !== false };
 }
 
 export async function assertLiveActivityInPath(pathId: string, liveActivityId: string | null) {
@@ -42,6 +44,7 @@ export async function publicShare(token: string) {
 export function assertShareAvailable(share: typeof trainingShares.$inferSelect) {
   const now = Math.floor(Date.now() / 1000);
   if (share.status !== 'active') throw new AppError(410, 'Ce lien a été désactivé par le formateur.', 'SHARE_DISABLED');
+  if (share.startsAt && share.startsAt > now) throw new AppError(423, 'Ce parcours n’est pas encore ouvert.', 'SHARE_NOT_STARTED');
   if (share.expiresAt && share.expiresAt <= now) throw new AppError(410, 'Ce lien de participation a expiré.', 'SHARE_EXPIRED');
   if (share.mode === 'classroom' && !share.sessionOpen) throw new AppError(423, 'La session en salle est actuellement fermée.', 'CLASSROOM_SESSION_CLOSED');
 }
