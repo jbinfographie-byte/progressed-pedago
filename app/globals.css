@@ -44,6 +44,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .install-app-success > span { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; color: white; background: #2e8067; font-size: 1.35rem; font-weight: 950; }
 .install-app-success strong { color: #174d40; }
 .install-app-success p { margin: 4px 0 0; color: #496d63; line-height: 1.5; }
+.install-app-icon-update { display: grid; gap: 13px; border: 1px solid #d7df89; border-radius: 15px; padding: 16px; background: #f7fadf; }
+.install-app-icon-update > strong { color: #174d40; }
+.install-app-icon-update .button { justify-self: start; }
 .install-app-note { border-radius: 12px; padding: 12px 14px; background: #edf6f1; font-size: .82rem; }
 .install-app-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .install-app-actions .button { flex: 1 1 145px; min-height: 44px; padding-inline: 14px; }

@@ -1,9 +1,9 @@
-const CACHE_NAME = 'progressed-pedago-install-v2';
+const CACHE_NAME = 'progressed-pedago-install-v3';
 const INSTALL_ASSETS = [
   '/manifest.webmanifest',
-  '/icons/progressed-pedago-192.png',
-  '/icons/progressed-pedago-512.png',
-  '/icons/progressed-pedago-180.png',
+  '/icons/progressed-pedago-book-v2-192.png',
+  '/icons/progressed-pedago-book-v2-512.png',
+  '/icons/progressed-pedago-book-v2-180.png',
 ];
 
 self.addEventListener('install', (event) => {

@@ -5,6 +5,8 @@ import Image from 'next/image';
 
 const INSTALL_REQUEST_EVENT = 'progressed-pedago:install-request';
 const INSTALL_STATE_KEY = 'progressed-pedago:installed';
+const ICON_RELEASE_KEY = 'progressed-pedago:icon-release';
+const CURRENT_ICON_RELEASE = 'book-v2';
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -66,6 +68,23 @@ function rememberInstallation() {
   }
 }
 
+function hasCurrentIconRelease() {
+  if (typeof window === 'undefined') return true;
+  try {
+    return window.localStorage.getItem(ICON_RELEASE_KEY) === CURRENT_ICON_RELEASE;
+  } catch {
+    return false;
+  }
+}
+
+function rememberCurrentIconRelease() {
+  try {
+    window.localStorage.setItem(ICON_RELEASE_KEY, CURRENT_ICON_RELEASE);
+  } catch {
+    // Le navigateur peut refuser le stockage local sans empêcher l'installation.
+  }
+}
+
 function requestInstallation() {
   window.dispatchEvent(new Event(INSTALL_REQUEST_EVENT));
 }
@@ -89,7 +108,7 @@ export function LearnerInstallButton() {
 export function LearnerInstallCard({ sharedAccess = false }: { sharedAccess?: boolean }) {
   return <>
     <section className="learner-install-card" aria-label="Accès rapide à Progressed Pédago">
-      <Image src="/icons/progressed-pedago-192.png" width={58} height={58} alt="" />
+      <Image src="/icons/progressed-pedago-book-v2-192.png" width={58} height={58} alt="" />
       <div>
         <strong>Retrouvez Progressed Pédago en un geste</strong>
         <p>{sharedAccess ? 'Ajoutez l’icône à votre écran d’accueil pour retrouver facilement ce parcours.' : 'Ajoutez l’icône à votre téléphone ou à votre ordinateur pour revenir directement à votre espace apprenant.'}</p>
@@ -105,6 +124,7 @@ export function InstallApp() {
   const [showGuide, setShowGuide] = useState(false);
   const [installed, setInstalled] = useState(() => isStandaloneApp() || wasInstalledOnThisDevice());
   const [alreadyInstalled, setAlreadyInstalled] = useState(false);
+  const [iconUpdateNeeded, setIconUpdateNeeded] = useState(() => (isStandaloneApp() || wasInstalledOnThisDevice()) && !hasCurrentIconRelease());
   const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
@@ -118,8 +138,10 @@ export function InstallApp() {
     };
     const appInstalled = () => {
       rememberInstallation();
+      rememberCurrentIconRelease();
       setInstalled(true);
       setAlreadyInstalled(true);
+      setIconUpdateNeeded(false);
       setPromptEvent(null);
       setFeedback('Progressed Pédago est maintenant installé sur cet appareil. Vous pouvez fermer ce message et ouvrir l’application depuis son icône.');
       setShowGuide(true);
@@ -146,7 +168,11 @@ export function InstallApp() {
       void (async () => {
         if (isStandaloneApp() || installed) {
           setAlreadyInstalled(true);
-          setFeedback('Progressed Pédago est déjà installé sur cet appareil. Vous utilisez actuellement la version installée.');
+          const needsIconUpdate = !hasCurrentIconRelease();
+          setIconUpdateNeeded(needsIconUpdate);
+          setFeedback(needsIconUpdate
+            ? 'Une nouvelle icône représentant le livre Progressed Pédago est disponible. Le système conserve l’ancien « P » jusqu’à une réinstallation unique.'
+            : 'Progressed Pédago est déjà installé sur cet appareil. Vous utilisez actuellement la version installée.');
           setShowGuide(true);
           return;
         }
@@ -161,8 +187,10 @@ export function InstallApp() {
           const choice = await promptEvent.userChoice;
           if (choice.outcome === 'accepted') {
             rememberInstallation();
+            rememberCurrentIconRelease();
             setInstalled(true);
             setAlreadyInstalled(true);
+            setIconUpdateNeeded(false);
             setFeedback('Progressed Pédago est maintenant installé. Son icône est disponible depuis les applications de votre appareil.');
           } else {
             setFeedback('Installation annulée. Vous pouvez recommencer ou suivre les étapes ci-dessous.');
@@ -188,6 +216,12 @@ export function InstallApp() {
     }
   };
 
+  const confirmIconUpdate = () => {
+    rememberCurrentIconRelease();
+    setIconUpdateNeeded(false);
+    setFeedback('Icône mise à jour confirmée. Progressed Pédago utilisera désormais le visuel du livre.');
+  };
+
   if (!showGuide) return null;
 
   const guide = installationGuide();
@@ -195,10 +229,21 @@ export function InstallApp() {
   return <div className="install-app-layer">
     <section className="install-app-dialog" role="dialog" aria-modal="false" aria-labelledby="install-app-title">
       <button className="install-app-close" type="button" onClick={() => setShowGuide(false)} aria-label="Fermer">×</button>
-      <Image src="/icons/progressed-pedago-192.png" width={88} height={88} alt="Icône Progressed Pédago" priority />
+      <Image src="/icons/progressed-pedago-book-v2-192.png" width={88} height={88} alt="Icône Progressed Pédago représentant un livre ouvert" priority />
       <p className="overline">Accès rapide</p>
       <h2 id="install-app-title">{alreadyInstalled ? 'Progressed Pédago est déjà installé' : 'Ajouter Progressed Pédago à l’écran d’accueil'}</h2>
-      {alreadyInstalled ? <div className="install-app-success"><span aria-hidden="true">✓</span><div><strong>Application disponible</strong><p>{feedback}</p></div></div> : <>
+      {alreadyInstalled ? <>
+        <div className="install-app-success"><span aria-hidden="true">✓</span><div><strong>Application disponible</strong><p>{feedback}</p></div></div>
+        {iconUpdateNeeded && <div className="install-app-icon-update">
+          <strong>Mettre à jour l’icône sur cet appareil</strong>
+          <ol className="install-app-steps">
+            <li><span>1</span><p>Fermez l’application, puis supprimez uniquement son ancienne icône de l’écran d’accueil ou le raccourci Progressed Pédago du dossier Applications.</p></li>
+            <li><span>2</span><p>Ouvrez de nouveau le site dans Safari, Chrome ou Edge.</p></li>
+            <li><span>3</span><p>Choisissez « Ajouter au Dock », « Installer l’application » ou « Sur l’écran d’accueil ». Le nouveau dessin du livre sera alors utilisé.</p></li>
+          </ol>
+          <button className="button light" type="button" onClick={confirmIconUpdate}>J’ai réinstallé l’application</button>
+        </div>}
+      </> : <>
         <div className="install-app-device"><strong>{guide.label}</strong><span>{promptEvent ? 'Installation directe disponible' : 'Installation guidée'}</span></div>
         <ol className="install-app-steps">{guide.steps.map((step, index) => <li key={step}><span>{index + 1}</span><p>{step}</p></li>)}</ol>
         {feedback && <p className="install-app-feedback" role="status">{feedback}</p>}

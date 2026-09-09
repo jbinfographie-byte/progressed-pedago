@@ -14,13 +14,15 @@ test('le manifeste permet une installation autonome avec des icônes adaptées',
   assert.equal(manifest.name, 'Progressed Pédago');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.start_url, '/');
-  const icons = manifest.icons as Array<{ sizes: string; purpose?: string }>;
-  assert.ok(icons.some((icon) => icon.sizes === '192x192'));
-  assert.ok(icons.some((icon) => icon.sizes === '512x512' && icon.purpose?.includes('maskable')));
+  const icons = manifest.icons as Array<{ src: string; sizes: string; purpose?: string }>;
+  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-book-v2-192.png' && icon.sizes === '192x192'));
+  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-book-v2-512.png' && icon.sizes === '512x512' && icon.purpose?.includes('maskable')));
 });
 
 test('le service worker ne met pas en cache les pages privées ni les API', () => {
   assert.match(serviceWorker, /INSTALL_ASSETS\.includes\(url\.pathname\)/);
+  assert.match(serviceWorker, /progressed-pedago-install-v3/);
+  assert.match(serviceWorker, /progressed-pedago-book-v2-192\.png/);
   assert.doesNotMatch(serviceWorker, /\/api\//);
 });
 
@@ -39,6 +41,9 @@ test('le parcours propose une installation directe et un guide multi-appareils',
   assert.match(installSource, /display-mode: standalone/);
   assert.match(installSource, /est déjà installé sur cet appareil/);
   assert.match(installSource, /progressed-pedago:installed/);
+  assert.match(installSource, /progressed-pedago:icon-release/);
+  assert.match(installSource, /Mettre à jour l’icône sur cet appareil/);
+  assert.match(installSource, /J’ai réinstallé l’application/);
   assert.match(installSource, /aria-modal="false"/);
 });
 
