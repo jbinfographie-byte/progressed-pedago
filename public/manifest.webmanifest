@@ -1,0 +1,43 @@
+{
+  "id": "/",
+  "name": "Progressed Pédago",
+  "short_name": "Pédago",
+  "description": "Créez, animez et suivez vos cours et activités pédagogiques.",
+  "lang": "fr-FR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "background_color": "#f6f4ed",
+  "theme_color": "#0b3b33",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/progressed-pedago-book-v2-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/progressed-pedago-book-v2-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ouvrir le tableau de bord",
+      "short_name": "Tableau de bord",
+      "url": "/",
+      "icons": [{ "src": "/icons/progressed-pedago-book-v2-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Applications et connexions",
+      "short_name": "Connexions",
+      "url": "/?view=connections",
+      "icons": [{ "src": "/icons/progressed-pedago-book-v2-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

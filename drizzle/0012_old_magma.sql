@@ -1,0 +1,1 @@
+ALTER TABLE `activation_codes` ADD `code_hint` text DEFAULT '' NOT NULL;

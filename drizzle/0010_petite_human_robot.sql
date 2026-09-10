@@ -1,0 +1,1 @@
+ALTER TABLE `training_shares` ADD `live_activity_id` text REFERENCES pedago_activities(id);

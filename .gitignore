@@ -1,0 +1,68 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.vinext/
+/out/
+
+# misc
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.cache/
+.turbo/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local environment and secrets
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# local databases, backups and private user content
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+*.backup
+*.sql.gz
+/backups/
+/data/
+/private/
+/private-uploads/
+/storage/
+/uploads/
+/user-content/
+/user-documents/
+
+# deployment and generated files
+.vercel
+next-env.d.ts
+/dist/
+/.wrangler/
+/outputs/
+/work/
+*.tsbuildinfo
