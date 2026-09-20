@@ -4,7 +4,7 @@ export type SequenceProgress = {
   maxScore?: number | null;
 };
 
-const finishedStatuses = new Set(['completed', 'submitted', 'reviewing', 'validated']);
+const finishedStatuses = new Set(['completed', 'passed', 'submitted', 'reviewing', 'validated']);
 
 export function isFinishedProgress(progress: SequenceProgress | null | undefined) {
   return Boolean(progress && finishedStatuses.has(String(progress.status ?? '')));
