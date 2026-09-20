@@ -15,14 +15,15 @@ test('le manifeste permet une installation autonome avec des icônes adaptées',
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.start_url, '/');
   const icons = manifest.icons as Array<{ src: string; sizes: string; purpose?: string }>;
-  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-book-v2-192.png' && icon.sizes === '192x192'));
-  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-book-v2-512.png' && icon.sizes === '512x512' && icon.purpose?.includes('maskable')));
+  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-learning-192.png' && icon.sizes === '192x192'));
+  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-learning-512.png' && icon.sizes === '512x512' && icon.purpose === 'any'));
+  assert.ok(icons.some((icon) => icon.src === '/icons/progressed-pedago-learning-maskable-512.png' && icon.sizes === '512x512' && icon.purpose === 'maskable'));
 });
 
 test('le service worker ne met pas en cache les pages privées ni les API', () => {
   assert.match(serviceWorker, /INSTALL_ASSETS\.includes\(url\.pathname\)/);
-  assert.match(serviceWorker, /progressed-pedago-install-v3/);
-  assert.match(serviceWorker, /progressed-pedago-book-v2-192\.png/);
+  assert.match(serviceWorker, /progressed-pedago-install-v4/);
+  assert.match(serviceWorker, /progressed-pedago-learning-192\.png/);
   assert.doesNotMatch(serviceWorker, /\/api\//);
 });
 

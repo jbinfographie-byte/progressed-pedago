@@ -14,16 +14,22 @@
   "categories": ["education", "productivity"],
   "icons": [
     {
-      "src": "/icons/progressed-pedago-book-v2-192.png",
+      "src": "/icons/progressed-pedago-learning-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/progressed-pedago-book-v2-512.png",
+      "src": "/icons/progressed-pedago-learning-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/progressed-pedago-learning-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "shortcuts": [
@@ -31,13 +37,13 @@
       "name": "Ouvrir le tableau de bord",
       "short_name": "Tableau de bord",
       "url": "/",
-      "icons": [{ "src": "/icons/progressed-pedago-book-v2-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/progressed-pedago-learning-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Applications et connexions",
       "short_name": "Connexions",
       "url": "/?view=connections",
-      "icons": [{ "src": "/icons/progressed-pedago-book-v2-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/progressed-pedago-learning-192.png", "sizes": "192x192" }]
     }
   ]
 }

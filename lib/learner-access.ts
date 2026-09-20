@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { learnerAssignments, learnerProfiles, users } from '@/db/schema';
 import type { AuthUser } from '@/lib/auth';
@@ -39,9 +39,9 @@ export async function getActiveAssignment(learnerId: string, trainingId: string)
   const now = Math.floor(Date.now() / 1000);
   const assignment = (await getDb().select().from(learnerAssignments).where(and(
     eq(learnerAssignments.learnerId, learnerId), eq(learnerAssignments.trainingId, trainingId),
-    ne(learnerAssignments.status, 'removed'),
+    eq(learnerAssignments.status, 'active'),
   )).limit(1))[0];
-  if (!assignment || assignment.status === 'paused') throw new AppError(403, 'Ce parcours ne vous est pas accessible.', 'ASSIGNMENT_UNAVAILABLE');
+  if (!assignment) throw new AppError(403, 'Ce parcours ne vous est pas accessible.', 'ASSIGNMENT_UNAVAILABLE');
   if (assignment.startsAt && assignment.startsAt > now) throw new AppError(403, 'Ce parcours n’est pas encore ouvert.', 'ASSIGNMENT_NOT_STARTED');
   if (assignment.dueAt && assignment.dueAt < now) throw new AppError(403, 'La date limite de ce parcours est dépassée.', 'ASSIGNMENT_EXPIRED');
   return assignment;

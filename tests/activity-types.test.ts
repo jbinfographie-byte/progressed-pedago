@@ -5,6 +5,7 @@ import { SCENARIO_EXAMPLE_CONTENT, validateScenarioContent } from '../lib/scenar
 
 function validContent(type: ActivityType): Record<string, unknown> {
   if (type === 'quiz' || type === 'tv-quiz') return { questions: [{ question: 'Q', choices: ['A','B'], correctIndex: 0 }] };
+  if (type === 'audio-quiz') return { language:'fr-FR',speechRate:0.9,repeatAllowed:true,items:[{id:'one',spokenText:'Bonjour',question:'Quel mot ?',choices:['Bonjour','Au revoir'],correctIndex:0,explanation:'Le mot prononcé est bonjour.'},{id:'two',spokenText:'Merci',question:'Quel mot ?',choices:['Pardon','Merci'],correctIndex:1,explanation:'Le mot prononcé est merci.'}] };
   if (type === 'true-false') return { statements: [{ text: 'A', answer: true }] };
   if (type === 'word-search') return { grid: ['ABC'], words: ['ABC'] };
   if (type === 'crossword') return { grid: ['...'], clues: [{ label: 'Indice' }] };
@@ -24,19 +25,20 @@ function validContent(type: ActivityType): Record<string, unknown> {
   return { items: [{ label: 'A' },{ label: 'B' }] };
 }
 
-test('les 29 mécaniques sont déclarées avec des identifiants uniques', () => {
-  assert.equal(ACTIVITY_TYPES.length, 29);
-  assert.equal(new Set(ACTIVITY_TYPES.map(([type]) => type)).size, 29);
+test('les 30 mécaniques sont déclarées avec des identifiants uniques', () => {
+  assert.equal(ACTIVITY_TYPES.length, 30);
+  assert.equal(new Set(ACTIVITY_TYPES.map(([type]) => type)).size, 30);
 });
 
-test('seuls les quatre formats demandés sont proposés à la création', () => {
-  assert.deepEqual(CREATABLE_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario']);
+test('les cinq formats assistés sont proposés à la création', () => {
+  assert.deepEqual(CREATABLE_ACTIVITY_TYPES.map(([type]) => type), ['quiz','audio-quiz','drag-drop','true-false','scenario']);
+  assert.equal(isCreatableActivityType('audio-quiz'), true);
   assert.equal(isCreatableActivityType('scenario'), true);
   assert.equal(isCreatableActivityType('word-search'), false);
 });
 
-test('l’atelier manuel propose douze formats guidés sans charger le tableau de bord', () => {
-  assert.deepEqual(MANUAL_ACTIVITY_TYPES.map(([type]) => type), ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll','external-game','voice-coach']);
+test('l’atelier manuel propose treize formats guidés sans charger le tableau de bord', () => {
+  assert.deepEqual(MANUAL_ACTIVITY_TYPES.map(([type]) => type), ['quiz','audio-quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll','external-game','voice-coach']);
   assert.equal(isManualActivityType('matching'),true);
   assert.equal(isManualActivityType('word-search'),false);
 });

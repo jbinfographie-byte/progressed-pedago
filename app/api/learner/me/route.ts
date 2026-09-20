@@ -20,7 +20,7 @@ export async function GET() {
       trainingName:courseFolders.name, trainingDescription:courseFolders.description, coverImageUrl:courseFolders.coverImageUrl,
       pathId:learningPaths.id, pathName:learningPaths.name,
     }).from(learnerAssignments).innerJoin(courseFolders,eq(courseFolders.id,learnerAssignments.trainingId)).innerJoin(learningPaths,eq(learningPaths.trainingId,courseFolders.id))
-      .where(and(eq(learnerAssignments.learnerId,learner.id),ne(learnerAssignments.status,'removed'),eq(courseFolders.status,'published'),eq(learningPaths.status,'published'))).orderBy(desc(learnerAssignments.updatedAt));
+      .where(and(eq(learnerAssignments.learnerId,learner.id),eq(learnerAssignments.status,'active'),eq(courseFolders.status,'published'),eq(learningPaths.status,'published'))).orderBy(desc(learnerAssignments.updatedAt));
     const pathIds=assignments.map((item)=>item.pathId).filter((id):id is string=>Boolean(id));
     const items=pathIds.length?await getDb().select({
       id:learningPathItems.id,pathId:learningPathItems.pathId,activityId:learningPathItems.activityId,position:learningPathItems.position,
@@ -40,7 +40,7 @@ export async function GET() {
     const assignmentById=new Map(assignments.map((assignment)=>[assignment.id,assignment]));
     const safeAssignments=assignments.map((assignment)=>({...assignment,items:items.filter((item)=>item.pathId===assignment.pathId).map((item)=>{
       const activityProgress=progressByAssignmentActivity.get(`${assignment.id}:${item.activityId}`);
-      const revealCorrection=assignment.resultVisible&&['completed','validated'].includes(activityProgress?.status??'');
+      const revealCorrection=assignment.resultVisible&&['completed','submitted','reviewing','validated'].includes(activityProgress?.status??'');
       return{...item,correction:revealCorrection?item.correction:'',objectives:JSON.parse(item.objectivesJson),content:JSON.parse(item.contentJson),sources:[]};
     })}));
     const safeEvaluations=evaluations.map((evaluation)=>{const assignment=assignmentById.get(evaluation.assignmentId);return{id:evaluation.id,assignmentId:evaluation.assignmentId,activityId:evaluation.activityId,status:evaluation.status,score:assignment?.resultVisible?evaluation.score:null,maxScore:assignment?.resultVisible?evaluation.maxScore:null,publicComment:assignment?.commentsVisible?evaluation.publicComment:'',updatedAt:evaluation.updatedAt};});
@@ -55,7 +55,7 @@ export async function POST(request:Request){
     if(action==='message'){
       const profile=(await getDb().select().from(learnerProfiles).where(eq(learnerProfiles.userId,learner.id)).limit(1))[0];
       if(!profile?.assignedTrainerId)throw new AppError(400,'Aucun formateur référent ne vous est attribué.','TRAINER_REQUIRED');
-      const assignment=(await getDb().select().from(learnerAssignments).where(and(eq(learnerAssignments.learnerId,learner.id),eq(learnerAssignments.trainerId,profile.assignedTrainerId),eq(learnerAssignments.chatAllowed,true),ne(learnerAssignments.status,'removed'))).limit(1))[0];
+      const assignment=(await getDb().select().from(learnerAssignments).where(and(eq(learnerAssignments.learnerId,learner.id),eq(learnerAssignments.trainerId,profile.assignedTrainerId),eq(learnerAssignments.chatAllowed,true),eq(learnerAssignments.status,'active'))).limit(1))[0];
       if(!assignment)throw new AppError(403,'La messagerie n’est pas autorisée pour vos parcours actuels.','CHAT_DISABLED');
       const message=cleanText(body.message,4000);if(!message)throw new AppError(400,'Le message est vide.','EMPTY_MESSAGE');
       await getDb().batch([getDb().insert(learnerMessages).values({id:crypto.randomUUID(),learnerId:learner.id,trainerId:profile.assignedTrainerId,authorId:learner.id,body:message}),getDb().insert(learnerNotifications).values({id:crypto.randomUUID(),userId:profile.assignedTrainerId,kind:'learner_message',title:'Nouveau message apprenant',body:message.slice(0,180),link:'/?view=learners'})]);
