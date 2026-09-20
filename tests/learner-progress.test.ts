@@ -10,6 +10,7 @@ test('une activité remise au formateur déverrouille immédiatement la suivante
 
 test('une activité notée terminée respecte le score minimum', () => {
   assert.equal(unlocksNextActivity({ status:'completed',score:7,maxScore:10 }, 70), true);
+  assert.equal(unlocksNextActivity({ status:'passed',score:8,maxScore:10 }, 70), true);
   assert.equal(unlocksNextActivity({ status:'completed',score:6,maxScore:10 }, 70), false);
   assert.equal(unlocksNextActivity({ status:'in_progress',score:10,maxScore:10 }, 0), false);
 });
