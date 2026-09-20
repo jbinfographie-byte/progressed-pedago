@@ -63,7 +63,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
     const overallMetrics = {
       averagePercent: scoredItems.length ? Math.round(scoredItems.reduce((sum, row) => sum + Number(row.score) / Number(row.maxScore) * 100, 0) / scoredItems.length) : null,
       gradedItems: scoredItems.length,
-      completedActivities: progress.filter((row) => ['completed', 'validated'].includes(row.status)).length,
+      completedActivities: progress.filter((row) => ['completed', 'submitted', 'reviewing', 'validated'].includes(row.status)).length,
       startedActivities: progress.length,
       validatedSubmissions: submissions.filter((row) => row.status === 'validated').length,
       totalSubmissions: submissions.length,
@@ -142,6 +142,15 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       await getDb().update(learnerAssignments).set({ status: 'removed', updatedAt: now }).where(eq(learnerAssignments.id, assignmentId));
       await audit(actor.id, 'learner.training_removed', 'learner_assignment', assignmentId, { preserveResults: true }, request);
       return jsonOk({ message: 'Le parcours est retiré. Les résultats sont conservés.' });
+    }
+    if (action === 'set_assignment_visibility') {
+      const assignmentId = cleanText(body.assignmentId, 100);
+      const assignment = (await getDb().select().from(learnerAssignments).where(and(eq(learnerAssignments.id, assignmentId), eq(learnerAssignments.learnerId, learnerId))).limit(1))[0];
+      if (!assignment || assignment.status === 'removed' || (actor.role === 'trainer' && assignment.trainerId !== actor.id)) throw new AppError(404, 'Cette attribution est introuvable.', 'ASSIGNMENT_NOT_FOUND');
+      const visible = body.visible === true;
+      await getDb().update(learnerAssignments).set({ status: visible ? 'active' : 'paused', updatedAt: now }).where(eq(learnerAssignments.id, assignmentId));
+      await audit(actor.id, 'learner.training_visibility_updated', 'learner_assignment', assignmentId, { visible }, request);
+      return jsonOk({ message: visible ? 'Le parcours est visible dans l’espace apprenant.' : 'Le parcours est masqué sans supprimer les résultats.' });
     }
     if (action === 'message') {
       const bodyText = cleanText(body.message, 4000);

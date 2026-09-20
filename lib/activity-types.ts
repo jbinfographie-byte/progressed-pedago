@@ -1,8 +1,9 @@
 import { validateScenarioContent } from './scenario.ts';
 import { externalGameValidationErrors } from './external-games.ts';
+import { audioQuizValidationErrors } from './audio-quiz.ts';
 
 export const ACTIVITY_TYPES = [
-  ['quiz', 'Quiz interactif', 'Questions, réponses mélangées et explications'], ['drag-drop', 'Glisser-déposer', 'Déplacer des éléments vers les bonnes zones'],
+  ['quiz', 'Quiz interactif', 'Questions, réponses mélangées et explications'], ['audio-quiz', 'Quiz audio', 'Écouter un mot ou une phrase puis choisir la bonne réponse'], ['drag-drop', 'Glisser-déposer', 'Déplacer des éléments vers les bonnes zones'],
   ['true-false', 'Vrai ou faux', 'Décider et comprendre la correction'], ['word-search', 'Mots mêlés', 'Retrouver les mots cachés dans une grille'],
   ['hangman', 'Pendu', 'Découvrir un mot lettre après lettre'], ['spell-word', 'Épeler le mot', 'Remettre les lettres dans le bon ordre'],
   ['crossword', 'Mots croisés', 'Compléter une grille à partir de définitions'], ['flip-tiles', 'Retournez les tuiles', 'Explorer des cartes recto-verso'],
@@ -21,12 +22,12 @@ export const ACTIVITY_TYPES = [
 ] as const;
 
 export type ActivityType = (typeof ACTIVITY_TYPES)[number][0];
-export const CREATABLE_ACTIVITY_TYPE_IDS = ['quiz','drag-drop','true-false','scenario'] as const satisfies readonly ActivityType[];
+export const CREATABLE_ACTIVITY_TYPE_IDS = ['quiz','audio-quiz','drag-drop','true-false','scenario'] as const satisfies readonly ActivityType[];
 const creatableActivityTypeIds = new Set<string>(CREATABLE_ACTIVITY_TYPE_IDS);
 export const CREATABLE_ACTIVITY_TYPES = ACTIVITY_TYPES.filter(([type]) => creatableActivityTypeIds.has(type));
 export type CreatableActivityType = (typeof CREATABLE_ACTIVITY_TYPE_IDS)[number];
 export function isCreatableActivityType(value: unknown): value is CreatableActivityType { return typeof value === 'string' && creatableActivityTypeIds.has(value); }
-export const MANUAL_ACTIVITY_TYPE_IDS = ['quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll','external-game','voice-coach'] as const satisfies readonly ActivityType[];
+export const MANUAL_ACTIVITY_TYPE_IDS = ['quiz','audio-quiz','drag-drop','true-false','scenario','matching','ranking','revision-cards','type-answer','question-wheel','live-poll','external-game','voice-coach'] as const satisfies readonly ActivityType[];
 const manualActivityTypeIds = new Set<string>(MANUAL_ACTIVITY_TYPE_IDS);
 export const MANUAL_ACTIVITY_TYPES = MANUAL_ACTIVITY_TYPE_IDS.map((type) => ACTIVITY_TYPES.find(([candidate]) => candidate === type)!);
 export type ManualActivityType = (typeof MANUAL_ACTIVITY_TYPE_IDS)[number];
@@ -55,7 +56,7 @@ export function validateMechanic(type: ActivityType, content: Record<string, unk
   const errors: string[] = [];
   const requireItems = (key: string, minimum = 1) => { if (list(content[key]).length < minimum) errors.push(`La mécanique « ${type} » nécessite ${minimum} élément(s) dans ${key}.`); };
   switch (type) {
-    case 'quiz': case 'tv-quiz': requireItems('questions'); break; case 'true-false': requireItems('statements'); break;
+    case 'quiz': case 'tv-quiz': requireItems('questions'); break; case 'audio-quiz': errors.push(...audioQuizValidationErrors(content)); break; case 'true-false': requireItems('statements'); break;
     case 'word-search': requireItems('grid'); requireItems('words'); break; case 'crossword': requireItems('grid'); requireItems('clues'); break; case 'hangman': requireItems('words'); break;
     case 'flip-tiles': case 'revision-cards': case 'random-cards': case 'memory-cards': case 'pair-or-not': requireItems('cards'); break;
     case 'type-answer': requireItems('prompts'); break; case 'interactive-image': if (!text(content.imageUrl)) errors.push('Une image est obligatoire.'); requireItems('hotspots'); break;

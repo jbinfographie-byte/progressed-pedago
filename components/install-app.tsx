@@ -108,7 +108,7 @@ export function LearnerInstallButton() {
 export function LearnerInstallCard({ sharedAccess = false }: { sharedAccess?: boolean }) {
   return <>
     <section className="learner-install-card" aria-label="Accès rapide à Progressed Pédago">
-      <Image src="/icons/progressed-pedago-book-v2-192.png" width={58} height={58} alt="" />
+      <Image src="/icons/progressed-pedago-learning-192.png" width={58} height={58} alt="" />
       <div>
         <strong>Retrouvez Progressed Pédago en un geste</strong>
         <p>{sharedAccess ? 'Ajoutez l’icône à votre écran d’accueil pour retrouver facilement ce parcours.' : 'Ajoutez l’icône à votre téléphone ou à votre ordinateur pour revenir directement à votre espace apprenant.'}</p>
@@ -229,7 +229,7 @@ export function InstallApp() {
   return <div className="install-app-layer">
     <section className="install-app-dialog" role="dialog" aria-modal="false" aria-labelledby="install-app-title">
       <button className="install-app-close" type="button" onClick={() => setShowGuide(false)} aria-label="Fermer">×</button>
-      <Image src="/icons/progressed-pedago-book-v2-192.png" width={88} height={88} alt="Icône Progressed Pédago représentant un livre ouvert" priority />
+      <Image src="/icons/progressed-pedago-learning-192.png" width={88} height={88} alt="Icône Progressed Pédago représentant un livre ouvert et un apprenant" priority />
       <p className="overline">Accès rapide</p>
       <h2 id="install-app-title">{alreadyInstalled ? 'Progressed Pédago est déjà installé' : 'Ajouter Progressed Pédago à l’écran d’accueil'}</h2>
       {alreadyInstalled ? <>

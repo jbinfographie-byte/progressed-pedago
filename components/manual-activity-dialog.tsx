@@ -7,6 +7,7 @@ import { SCENARIO_EXAMPLE_CONTENT, type ScenarioContent, type ScenarioScene } fr
 import { DEFAULT_EXTERNAL_GAME_CONTENT, externalResourceEmbedUrl, extractExternalGameUrl, inspectExternalHtml, normalizeExternalGameContent, providerFromExternalGameUrl, providerLabel, type ExternalResourceOutput } from '@/lib/external-games';
 import { normalizeVoiceCoachContent, VOICE_ACTIVITY_KINDS, VOICE_COACH_MODES, VOICE_LISTENING_FORMATS, type VoiceActivityKind, type VoiceListeningFormat } from '@/lib/voice-coach';
 import { VOICE_SESSION_DURATION_MINUTES } from '@/lib/voice-session-duration';
+import { audioQuizFromLines, normalizeAudioQuizContent } from '@/lib/audio-quiz';
 
 type Question = { question: string; choices: string[]; correctIndex: number; explanation: string };
 type ContentRow = Record<string,unknown>;
@@ -15,7 +16,7 @@ type EditableActivity = ActivityDraft & { id: string; status: 'draft' | 'publish
 type ExternalAnalysis = { title:string;theme:string;audience:string;level:'debutant'|'intermediaire'|'avance';difficulty:string;objectives:string[];instructions:string;concepts:string[];introduction:string;preGameExplanation:string;learnerTips:string[];debrief:string;correction:string;summary:string;memo:string;questions:Array<{question:string;answer:string}> };
 type PedagogyFrame = { title:string;theme:string;audience:string;level:'debutant'|'intermediaire'|'avance';durationMinutes:number;objectives:string;instructions:string;explanation:string;correction:string };
 
-const manualSymbols: Partial<Record<ActivityType,string>> = { quiz:'?', 'drag-drop':'↕', 'true-false':'✓',scenario:'➜',matching:'⇄',ranking:'≡','revision-cards':'▤','type-answer':'⌨','question-wheel':'✺','live-poll':'◔','external-game':'⌁','voice-coach':'◉' };
+const manualSymbols: Partial<Record<ActivityType,string>> = { quiz:'?', 'audio-quiz':'♫', 'drag-drop':'↕', 'true-false':'✓',scenario:'➜',matching:'⇄',ranking:'≡','revision-cards':'▤','type-answer':'⌨','question-wheel':'✺','live-poll':'◔','external-game':'⌁','voice-coach':'◉' };
 const EXTERNAL_OUTPUT_OPTIONS: Array<[ExternalResourceOutput,string]> = [['course','Cours complet'],['summary','Résumé'],['memo','Fiche mémo'],['explanations','Explications pédagogiques'],['quiz','Quiz'],['true-false','Vrai ou faux'],['open-questions','Questions ouvertes'],['scenario','Mise en situation'],['case-study','Étude de cas'],['exercise','Exercice complémentaire'],['correction','Corrigé'],['pdf','Version PDF']];
 type VoiceLibraryDocument={id:string;originalName:string;status:string;pageCount?:number|null;detectedTheme?:string|null};
 const VOICE_COACH_DEMOS:Array<{label:string;content:Record<string,unknown>}>= [
@@ -106,6 +107,7 @@ function questionsFromContent(content: unknown): Question[] { const rows = (cont
 function quizContent(questions: Question[]) { return { questions:questions.map((item) => ({ question:item.question.trim(),choices:item.choices.map((choice) => choice.trim()),correctIndex:item.correctIndex,explanation:item.explanation.trim() })) }; }
 
 function GuidedActivityEditor({ type,value,onChange,onExternalAnalysis }: { type:ActivityType;value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void;onExternalAnalysis:(analysis:ExternalAnalysis)=>void }) {
+  if (type === 'audio-quiz') return <AudioQuizEditor value={value} onChange={onChange} />;
   if (type === 'drag-drop' || type === 'matching') return <DragDropEditor value={value} onChange={onChange} visualAllowed={type === 'drag-drop'} />;
   if (type === 'true-false') return <TrueFalseEditor value={value} onChange={onChange} />;
   if (type === 'ranking') return <RankingEditor value={value} onChange={onChange} />;
@@ -116,6 +118,24 @@ function GuidedActivityEditor({ type,value,onChange,onExternalAnalysis }: { type
   if (type === 'external-game') return <ExternalGameEditor value={value} onChange={onChange} onAnalysis={onExternalAnalysis} />;
   if (type === 'voice-coach') return <VoiceCoachEditor value={value} onChange={onChange} />;
   return null;
+}
+
+function AudioQuizEditor({value,onChange}:{value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void}) {
+  const quiz=normalizeAudioQuizContent(value);
+  const [bulkText,setBulkText]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState('');
+  const updateItem=(index:number,patch:Partial<(typeof quiz.items)[number]>)=>onChange({...quiz,items:quiz.items.map((item,itemIndex)=>itemIndex===index?{...item,...patch}:item)});
+  const addItem=()=>onChange({...quiz,items:[...quiz.items,{id:`audio-item-${Date.now()}`,spokenText:'',question:'Quel mot ou quelle phrase avez-vous entendu ?',choices:['','',''],correctIndex:0,explanation:''}]});
+  const buildFromText=()=>{const generated=audioQuizFromLines(bulkText,quiz.language);if(generated.items.length<2){setMessage('Ajoutez au moins deux mots ou phrases, un par ligne.');return;}onChange({...generated,speechRate:quiz.speechRate,repeatAllowed:quiz.repeatAllowed});setMessage(`${generated.items.length} questions audio ont été préparées. Vous pouvez encore les modifier.`);};
+  const importDocuments=async(event:ChangeEvent<HTMLInputElement>)=>{const files=Array.from(event.target.files??[]);event.target.value='';if(!files.length)return;setBusy(true);setMessage('Import sécurisé des documents…');try{const form=new FormData();files.forEach((file)=>form.append('files',file));const uploadResponse=await fetch('/api/files',{method:'POST',body:form});const uploadPayload=await uploadResponse.json() as ApiResult<{files:Array<{id:string}>;errors?:Array<{message:string}>}>;if(!uploadPayload.ok)throw new Error(uploadPayload.error.message);const fileIds=uploadPayload.data.files.map((file)=>file.id);if(!fileIds.length)throw new Error(uploadPayload.data.errors?.[0]?.message||'Aucun document exploitable n’a été importé.');for(const [index,fileId] of fileIds.entries()){setMessage(`Analyse du document ${index+1} sur ${fileIds.length}…`);const response=await fetch(`/api/documents/${fileId}/analyze`,{method:'POST'});const payload=await response.json() as ApiResult<unknown>;if(!payload.ok)throw new Error(payload.error.message);}setMessage('Création des questions audio avec l’IA…');const response=await fetch('/api/audio-quiz/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fileIds,language:quiz.language,itemCount:Math.min(20,Math.max(6,quiz.items.length||10))})});const payload=await response.json() as ApiResult<{content:Record<string,unknown>;message:string}>;if(!payload.ok)throw new Error(payload.error.message);onChange(payload.data.content);setMessage(payload.data.message);}catch(reason){setMessage(reason instanceof Error?reason.message:'La création depuis le document a échoué.');}finally{setBusy(false);}};
+  return <div className="audio-quiz-editor">
+    <div className="audio-quiz-editor-note"><span>♫</span><p><strong>Quiz audio · écoute et compréhension</strong>Le texte est prononcé sur l’appareil de l’apprenant. Il peut réécouter, choisir une réponse et consulter la correction détaillée.</p></div>
+    <div className="form-row"><label>Langue de prononciation<input value={quiz.language} onChange={(event)=>onChange({...quiz,language:event.target.value})} placeholder="fr-FR, en-US, es-ES…"/></label><label>Vitesse de lecture<select value={quiz.speechRate} onChange={(event)=>onChange({...quiz,speechRate:Number(event.target.value)})}><option value="0.7">Lente</option><option value="0.9">Normale</option><option value="1.1">Rapide</option></select></label><label className="switch-row"><input type="checkbox" checked={quiz.repeatAllowed} onChange={(event)=>onChange({...quiz,repeatAllowed:event.target.checked})}/>Autoriser la réécoute</label></div>
+    <section className="audio-quiz-bulk"><div><strong>Coller une liste de mots ou de phrases</strong><small>Un élément par ligne. Les propositions sont mélangées automatiquement.</small></div><textarea rows={5} value={bulkText} onChange={(event)=>setBulkText(event.target.value)} placeholder={'bonjour\nau revoir\nmerci beaucoup\ncomment allez-vous ?'}/><button className="button light" type="button" onClick={buildFromText}>Créer le quiz depuis cette liste</button></section>
+    <label className="drop-area compact audio-quiz-import">Importer un PDF, Word, PowerPoint, texte ou image<input type="file" multiple accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg" disabled={busy} onChange={(event)=>void importDocuments(event)}/><span>{busy?'Analyse en cours…':'L’IA analysera le document et préparera automatiquement les mots, phrases et réponses.'}</span></label>{message&&<p className="form-message" role="status">{message}</p>}
+    <div className="simple-editor">{quiz.items.map((item,index)=><article className="simple-editor-card audio-quiz-item-editor" key={item.id}><header><strong>Question audio {index+1}</strong><button type="button" disabled={quiz.items.length<=2} onClick={()=>onChange({...quiz,items:quiz.items.filter((_,itemIndex)=>itemIndex!==index)})}>Supprimer</button></header><label>Texte prononcé par la voix<input required value={item.spokenText} onChange={(event)=>updateItem(index,{spokenText:event.target.value})} placeholder="Ex. Bonjour, comment allez-vous ?"/></label><label>Question affichée<input required value={item.question} onChange={(event)=>updateItem(index,{question:event.target.value})}/></label><fieldset><legend>Réponses proposées · cochez la bonne réponse</legend><div className="quiz-choice-editor">{item.choices.map((choice,choiceIndex)=><label className={item.correctIndex===choiceIndex?'correct-choice':''} key={choiceIndex}><input type="radio" name={`audio-correct-${index}`} checked={item.correctIndex===choiceIndex} onChange={()=>updateItem(index,{correctIndex:choiceIndex})}/><span>{String.fromCharCode(65+choiceIndex)}</span><input required value={choice} onChange={(event)=>updateItem(index,{choices:item.choices.map((candidate,candidateIndex)=>candidateIndex===choiceIndex?event.target.value:candidate)})} placeholder={`Réponse ${choiceIndex+1}`}/></label>)}</div></fieldset><label>Explication après la réponse<textarea rows={2} value={item.explanation} onChange={(event)=>updateItem(index,{explanation:event.target.value})} placeholder="Expliquez le mot, la phrase ou la règle travaillée."/></label></article>)}</div><button className="add-question" type="button" onClick={addItem}>＋ Ajouter une question audio</button>
+  </div>;
 }
 
 function VoiceCoachEditor({value,onChange}:{value:Record<string,unknown>;onChange:(value:Record<string,unknown>)=>void}) {
@@ -288,6 +308,7 @@ function linkScenarioScenes(scenes:ScenarioScene[]):ScenarioScene[] { return sce
 function starterContent(type: ActivityType): Record<string,unknown> {
   const items = [{label:'Préparer le matériel',category:'Avant'},{label:'Baliser la zone',category:'Avant'},{label:'Contrôler le résultat',category:'Après'}];
   if (type === 'true-false') return { statements:[{text:'Les produits chimiques peuvent être mélangés pour gagner du temps.',answer:false,explanation:'Un mélange peut produire une réaction dangereuse.'}] };
+  if (type === 'audio-quiz') return audioQuizFromLines('Bonjour\nAu revoir\nMerci beaucoup','fr-FR') as unknown as Record<string,unknown>;
   if (type === 'word-search') return { grid:['BALISAGE','PRODUITS','SECURITE','MATERIEL'],words:['BALISAGE','SECURITE'] };
   if (type === 'crossword') return { grid:['....#','.#...','.....'],clues:[{label:'Protection individuelle'},{label:'Signalement d’une zone humide'}] };
   if (type === 'hangman') return { words:['BALISAGE'] };

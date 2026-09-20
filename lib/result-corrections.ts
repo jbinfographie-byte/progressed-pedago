@@ -25,8 +25,8 @@ const safeText = (value: unknown, fallback = 'Non renseigné') => typeof value =
 
 export function buildResultCorrection(type: ActivityType, content: Record<string, unknown>, answers: unknown, activityCorrection = ''): ResultCorrection {
   const answerList = Array.isArray(answers) ? answers : [];
-  if (type === 'quiz' || type === 'tv-quiz') {
-    const questions = records(content.questions);
+  if (type === 'quiz' || type === 'tv-quiz' || type === 'audio-quiz') {
+    const questions = records(type === 'audio-quiz' ? content.items : content.questions);
     return {
       kind: 'graded',
       summary: activityCorrection || 'Comparez chaque réponse avec la solution et son explication.',
@@ -36,7 +36,7 @@ export function buildResultCorrection(type: ActivityType, content: Record<string
         const expectedIndex = Number(question.correctIndex ?? 0);
         const selectedIndex = Number(answerList[index]);
         return {
-          prompt: safeText(question.question, `Question ${index + 1}`),
+          prompt: type === 'audio-quiz' ? `Écoute ${index + 1} · ${safeText(question.question, 'Identifier le mot ou la phrase')}` : safeText(question.question, `Question ${index + 1}`),
           learnerAnswer: Number.isInteger(selectedIndex) && choices[selectedIndex] ? choices[selectedIndex] : 'Sans réponse',
           expectedAnswer: choices[expectedIndex] || 'Solution non renseignée',
           correct: Number.isInteger(selectedIndex) ? selectedIndex === expectedIndex : false,

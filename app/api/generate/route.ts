@@ -26,8 +26,8 @@ export async function POST(request: Request) {
     if (sourceKind === 'documents' && !fileIds.length) throw new AppError(400, 'Ajoutez au moins un PDF ou un document à analyser.', 'DOCUMENT_REQUIRED');
     if (sourceKind === 'prompt' && rawPrompt.length < 15 && !fileIds.length) throw new AppError(400, 'Décrivez le cours souhaité, ajoutez un document ou fournissez un lien.', 'PROMPT_TOO_SHORT');
     const requested = Array.isArray(body.formats) ? body.formats.map(String) : [String(body.type ?? 'quiz')];
-    const formats = [...new Set(requested)].filter((type): type is ActivityType => isCreatableActivityType(type)).slice(0, 4);
-    if (!formats.length) throw new AppError(400, 'Choisissez un quiz, un glisser-déposer, un vrai ou faux ou une mise en situation.', 'NO_FORMAT');
+    const formats = [...new Set(requested)].filter((type): type is ActivityType => isCreatableActivityType(type)).slice(0, 5);
+    if (!formats.length) throw new AppError(400, 'Choisissez un quiz, un quiz audio, un glisser-déposer, un vrai ou faux ou une mise en situation.', 'NO_FORMAT');
     const credential = await resolveOpenAiCredential(user.id); const apiKey = credential.apiKey;
     const source = await resolveSourceMaterial(body,{transcribeMedia:(media) => transcribeMediaWithOpenAI(apiKey,media)});
     if (rawPrompt.length < 15 && !source && !fileIds.length) throw new AppError(400, 'Décrivez le cours souhaité, ajoutez un document ou fournissez un lien.', 'PROMPT_TOO_SHORT');

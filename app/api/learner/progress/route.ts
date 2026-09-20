@@ -4,6 +4,7 @@ import { activities, courseFolders, learnerAccountProgress, learnerAssignments, 
 import { audit, requireLearner } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { cleanText, getActiveAssignment } from '@/lib/learner-access';
+import { unlocksNextActivity } from '@/lib/learner-progress';
 
 export async function PATCH(request:Request){
   try{
@@ -16,7 +17,7 @@ export async function PATCH(request:Request){
     if(target.activity.type==='voice-coach'&&!assignment.voiceAllowed)throw new AppError(403,'Le Coach vocal n’est pas autorisé pour ce parcours.','VOICE_DISABLED');
     if(assignment.orderMode==='sequential'&&target.item.position>0){
       const previous=await getDb().select({activityId:learningPathItems.activityId,minScore:learningPathItems.minScore}).from(learningPathItems).where(and(eq(learningPathItems.pathId,target.item.pathId),lt(learningPathItems.position,target.item.position)));
-      for(const item of previous){const progress=(await getDb().select().from(learnerAccountProgress).where(and(eq(learnerAccountProgress.assignmentId,assignmentId),eq(learnerAccountProgress.activityId,item.activityId))).limit(1))[0];const progressPercentage=progress?.score!=null&&progress.maxScore?Math.round(progress.score/progress.maxScore*100):null;if(!progress||!['completed','validated'].includes(progress.status)||(item.minScore>0&&(progressPercentage??0)<item.minScore))throw new AppError(403,'Terminez d’abord les activités précédentes et atteignez la note minimale demandée.','ACTIVITY_LOCKED');}
+      for(const item of previous){const progress=(await getDb().select().from(learnerAccountProgress).where(and(eq(learnerAccountProgress.assignmentId,assignmentId),eq(learnerAccountProgress.activityId,item.activityId))).limit(1))[0];if(!unlocksNextActivity(progress,item.minScore))throw new AppError(403,'Terminez d’abord les activités précédentes et atteignez la note minimale demandée.','ACTIVITY_LOCKED');}
     }
     const existing=(await getDb().select().from(learnerAccountProgress).where(and(eq(learnerAccountProgress.assignmentId,assignmentId),eq(learnerAccountProgress.activityId,activityId))).limit(1))[0];
     const requested=String(body.status??'in_progress');const completing=requested==='completed';const attempts=existing?.attempts??0;

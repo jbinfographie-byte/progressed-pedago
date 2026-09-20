@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable @next/next/no-img-element */
 
-import { type CSSProperties, type DragEvent, type ReactNode, useState } from 'react';
+import { type CSSProperties, type DragEvent, type ReactNode, useEffect, useState } from 'react';
 import { ACTIVITY_TYPES, normalizeAnswer, type ActivityType } from '@/lib/activity-types';
 import { ActivityPrintSheet, StructuredExplanation, type PrintableActivity } from '@/components/activity-print-sheet';
 import { CourseImageManager } from '@/components/course-image-manager';
@@ -13,6 +13,7 @@ import { expectedItemsByTarget, normalizeDragDropContent, type DragDropItem, typ
 import { normalizeExternalGameContent, providerLabel, type ExternalGamePaperOptions } from '@/lib/external-games';
 import { buildResultCorrection, type ResultCorrection } from '@/lib/result-corrections';
 import { VoiceCoach } from '@/components/voice-coach';
+import { normalizeAudioQuizContent } from '@/lib/audio-quiz';
 
 type PlayerActivity = PrintableActivity & { id?: string };
 type Item = { id?: string; label?: string; text?: string; answer?: string; category?: string; correct?: boolean; front?: string; back?: string; pair?: string };
@@ -33,7 +34,7 @@ export function ActivityPlayer({ activity, onClose, journey, canManageImages = f
   const [courseImages,setCourseImages] = useState(() => courseImagesFromContent(activity.content));
   const coursePages=coursePagesFromContent(activity.content);
   const sourceMedia = readSourceMedia(activity.content.sourceMedia);
-  const gradedActivity=['quiz','tv-quiz','true-false','drag-drop','matching','scenario','voice-coach'].includes(activity.type);
+  const gradedActivity=['quiz','audio-quiz','tv-quiz','true-false','drag-drop','matching','scenario','voice-coach'].includes(activity.type);
   const illustratedActivity={...activity,content:{...activity.content,courseImages,...(externalGame&&paperOptions?{paper:{...paperOptions}}:{})}};
   const printSupport=()=>{if(externalGame){setPaperDialogOpen(true);return;}window.print();};
   return (
@@ -79,6 +80,7 @@ function readSourceMedia(value: unknown): SourceMedia | null {
 
 function Mechanic({ type, content,activity,journey }: { type: ActivityType; content: Record<string, unknown>; activity: PlayerActivity; journey?:JourneyContext }) {
   if (type === 'quiz' || type === 'tv-quiz') return <Quiz content={content} correction={activity.correction} televised={type === 'tv-quiz'} journey={journey} />;
+  if (type === 'audio-quiz') return <AudioQuiz content={content} correction={activity.correction} journey={journey} />;
   if (type === 'true-false') return <TrueFalse content={content} correction={activity.correction} journey={journey} />;
   if (['flip-tiles','revision-cards','memory-cards','random-cards','pair-or-not'].includes(type)) return <Cards content={content} random={type === 'random-cards'} memory={type === 'memory-cards'} pair={type === 'pair-or-not'} />;
   if (type === 'challenge-wheel' || type === 'question-wheel') return <Wheel content={content} questionMode={type === 'question-wheel'} />;
@@ -122,6 +124,19 @@ function Quiz({ content,correction,televised=false,journey }: { content:Record<s
   const reset=()=>{setIndex(0);setAnswer(null);setScore(0);setAnswers([]);setFinished(false);setSaved(false);setStartedAt(Date.now());};
   if(finished)return <JourneyResultPanel title="Quiz terminé" score={score} maxScore={questions.length} correction={buildResultCorrection(televised?'tv-quiz':'quiz',content,answers,correction)} journey={journey} busy={busy} saved={saved} onSave={save} onRetry={reset}/>;
   return <div className={televised?'tv-board':'quiz-board'}>{televised&&<div className="game-strip"><span>♥ ♥ ♥</span><strong>Score {score}</strong><span>{index+1}/{questions.length}</span></div>}<p className="step-label">Question {index+1} sur {questions.length}</p><h3>{question.question}</h3><div className="choice-grid">{(question.choices??[]).map((choice,choiceIndex)=><button type="button" key={choice} onClick={()=>select(choiceIndex)} className={answer===null?'':choiceIndex===Number(question.correctIndex??0)?'correct':answer===choiceIndex?'wrong':''}><span>{String.fromCharCode(65+choiceIndex)}</span>{choice}</button>)}</div>{answer!==null&&<div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer===Number(question.correctIndex??0)?'Bonne réponse !':'À revoir'}</strong>{question.explanation?<StructuredExplanation text={question.explanation} compact/>:<p>Relisez le mini-cours puis reformulez la règle avec vos propres mots.</p>}<button className="button dark" type="button" onClick={next}>{index===questions.length-1?'Voir mon score et le corrigé':'Question suivante'}</button></div>}</div>;
+}
+
+function AudioQuiz({content,correction,journey}:{content:Record<string,unknown>;correction?:string;journey?:JourneyContext}) {
+  const quiz=normalizeAudioQuizContent(content);const[index,setIndex]=useState(0);const[answer,setAnswer]=useState<number|null>(null);const[score,setScore]=useState(0);const[answers,setAnswers]=useState<number[]>([]);const[startedAt,setStartedAt]=useState(()=>Date.now());const[busy,setBusy]=useState(false);const[finished,setFinished]=useState(false);const[saved,setSaved]=useState(Boolean(journey?.completed));const[played,setPlayed]=useState(false);const[voiceMessage,setVoiceMessage]=useState('');const item=quiz.items[index];
+  useEffect(()=>()=>{if(typeof window!=='undefined')window.speechSynthesis?.cancel();},[]);
+  if(!item)return <EmptyMechanic/>;
+  const speak=()=>{if(typeof window==='undefined'||!('speechSynthesis' in window)||typeof SpeechSynthesisUtterance==='undefined'){setVoiceMessage('La lecture vocale n’est pas disponible dans ce navigateur. Utilisez Safari, Chrome ou Edge à jour.');return;}window.speechSynthesis.cancel();const utterance=new SpeechSynthesisUtterance(item.spokenText);utterance.lang=quiz.language;utterance.rate=quiz.speechRate;const languagePrefix=quiz.language.toLowerCase().split('-')[0];const voice=window.speechSynthesis.getVoices().find((candidate)=>candidate.lang.toLowerCase()===quiz.language.toLowerCase())??window.speechSynthesis.getVoices().find((candidate)=>candidate.lang.toLowerCase().startsWith(languagePrefix));if(voice)utterance.voice=voice;utterance.onerror=()=>setVoiceMessage('La lecture a été interrompue. Appuyez sur Réécouter.');utterance.onstart=()=>setVoiceMessage('Lecture en cours…');utterance.onend=()=>setVoiceMessage('À vous de choisir la bonne réponse.');window.speechSynthesis.speak(utterance);setPlayed(true);};
+  const select=(choice:number)=>{if(answer!==null)return;setAnswer(choice);setAnswers((values)=>[...values,choice]);if(choice===item.correctIndex)setScore((value)=>value+1);};
+  const next=()=>{if(index<quiz.items.length-1){setIndex((value)=>value+1);setAnswer(null);setPlayed(false);setVoiceMessage('');}else setFinished(true);};
+  const save=async()=>{if(!journey?.onComplete||saved)return;setBusy(true);try{await journey.onComplete({score,maxScore:quiz.items.length,answers,durationSeconds:Math.round((Date.now()-startedAt)/1000)});setSaved(true);}finally{setBusy(false);}};
+  const reset=()=>{if(typeof window!=='undefined')window.speechSynthesis?.cancel();setIndex(0);setAnswer(null);setScore(0);setAnswers([]);setFinished(false);setSaved(false);setPlayed(false);setVoiceMessage('');setStartedAt(Date.now());};
+  if(finished)return <JourneyResultPanel title="Quiz audio terminé" score={score} maxScore={quiz.items.length} correction={buildResultCorrection('audio-quiz',content,answers,correction)} journey={journey} busy={busy} saved={saved} onSave={save} onRetry={reset}/>;
+  return <section className="audio-quiz-board"><header><div><p className="step-label">Écoute {index+1} sur {quiz.items.length}</p><h3>{item.question}</h3><p>Écoutez attentivement, puis choisissez la proposition correspondante.</p></div><div className="audio-quiz-score"><small>Score</small><strong>{score}</strong></div></header><div className={`audio-listen-card ${played?'played':''}`}><span aria-hidden="true">♫</span><div><strong>{played?'Vous pouvez réécouter':'Prêt à écouter ?'}</strong><small>Langue {quiz.language} · vitesse {quiz.speechRate}</small></div><button className="button dark" type="button" onClick={speak} disabled={played&&!quiz.repeatAllowed}>{played?'Réécouter':'Écouter le mot ou la phrase'}</button></div>{voiceMessage&&<p className="audio-voice-status" role="status">{voiceMessage}</p>}<div className="choice-grid audio-choice-grid">{item.choices.map((choice,choiceIndex)=><button type="button" key={`${choiceIndex}-${choice}`} disabled={!played||answer!==null} onClick={()=>select(choiceIndex)} className={answer===null?'':choiceIndex===item.correctIndex?'correct':answer===choiceIndex?'wrong':''}><span>{String.fromCharCode(65+choiceIndex)}</span>{choice}</button>)}</div>{answer!==null&&<div className="feedback-box detailed-feedback" role="status"><span className="feedback-label">Correction expliquée</span><strong>{answer===item.correctIndex?'Bonne réponse !':'À revoir'}</strong><p>La voix a prononcé : <b>{item.spokenText}</b></p>{item.explanation?<StructuredExplanation text={item.explanation} compact/>:<p>Réécoutez la formulation et comparez chaque son avec la réponse attendue.</p>}<button className="button dark" type="button" onClick={next}>{index===quiz.items.length-1?'Voir mon score et le corrigé':'Écoute suivante'}</button></div>}</section>;
 }
 
 function TrueFalse({content,correction,journey}:{content:Record<string,unknown>;correction?:string;journey?:JourneyContext}) {

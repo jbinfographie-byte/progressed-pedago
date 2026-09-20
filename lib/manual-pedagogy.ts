@@ -8,6 +8,7 @@ type Card = { front?: unknown; back?: unknown };
 type ClassifiedItem = { label?: unknown; text?: unknown; category?: unknown; explanation?: unknown };
 type Target = { id?: unknown; label?: unknown; description?: unknown; definition?: unknown };
 type LabelledItem = { label?: unknown; text?: unknown };
+type AudioQuizItem = { spokenText?: unknown; question?: unknown; choices?: unknown; correctIndex?: unknown; explanation?: unknown };
 
 export function buildManualPedagogy(type: ActivityType, title: string, objectives: string[], content: Record<string, unknown>) {
   if (type === 'external-game') return buildExternalGamePedagogy(title,objectives,content);
@@ -71,6 +72,10 @@ function buildExternalGamePedagogy(title:string,objectives:string[],content:Reco
 }
 
 function extractTeachingPoints(type: ActivityType, content: Record<string, unknown>): string[] {
+  if (type === 'audio-quiz') return arrayOf<AudioQuizItem>(content.items).map((item) => {
+    const choices = strings(item.choices); const answer = choices[Number(item.correctIndex ?? 0)] || text(item.spokenText);
+    return text(item.explanation) || `À l’écoute de « ${text(item.spokenText)} », la réponse attendue est « ${answer} ».`;
+  }).filter(Boolean);
   if (type === 'quiz' || type === 'tv-quiz') return arrayOf<QuizQuestion>(content.questions).map((item) => {
     const explanation = text(item.explanation);
     if (explanation) return explanation;
@@ -91,6 +96,10 @@ function extractTeachingPoints(type: ActivityType, content: Record<string, unkno
 }
 
 function buildCorrectionLines(type: ActivityType, content: Record<string, unknown>): string[] {
+  if (type === 'audio-quiz') return arrayOf<AudioQuizItem>(content.items).map((item,index) => {
+    const choices = strings(item.choices); const answer = choices[Number(item.correctIndex ?? 0)] || text(item.spokenText) || 'Réponse à préciser';
+    return `Écoute ${index + 1} — ${answer}. ${text(item.explanation)}`.trim();
+  });
   if (type === 'quiz' || type === 'tv-quiz') return arrayOf<QuizQuestion>(content.questions).map((item,index) => {
     const choices = strings(item.choices); const answer = choices[Number(item.correctIndex ?? 0)] ?? 'Réponse à préciser';
     return `Question ${index + 1} — ${answer}. ${text(item.explanation)}`.trim();

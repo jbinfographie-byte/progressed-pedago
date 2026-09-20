@@ -47,6 +47,16 @@ export function diversifyGeneratedAnswerPositions(content: UnknownRecord, seed: 
     };
   }
 
+  if (Array.isArray(content.items) && content.items.some((item) => isRecord(item) && typeof item.spokenText === 'string' && Array.isArray(item.choices))) {
+    diversified = {
+      ...diversified,
+      items: content.items.map((item, index) => {
+        const choiceCount = isRecord(item) && Array.isArray(item.choices) ? item.choices.length : 0;
+        return relocateCorrectChoice(item, choiceCount ? (offset + index) % choiceCount : 0);
+      }),
+    };
+  }
+
   if (Array.isArray(content.coursePages)) {
     diversified = {
       ...diversified,

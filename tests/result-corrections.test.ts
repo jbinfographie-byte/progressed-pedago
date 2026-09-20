@@ -9,6 +9,13 @@ test('builds a full quiz correction from stored answer indexes', () => {
   assert.equal(result.items[0]?.expectedAnswer,'Selon le risque');
 });
 
+test('builds an audio quiz correction without exposing the spoken text in the prompt', () => {
+  const result = buildResultCorrection('audio-quiz',{items:[{spokenText:'Bonjour',question:'Quel mot avez-vous entendu ?',choices:['Au revoir','Bonjour'],correctIndex:1,explanation:'Bonjour est une salutation.'}]},[1]);
+  assert.equal(result.items[0]?.correct,true);
+  assert.match(result.items[0]?.prompt??'',/Écoute 1/);
+  assert.equal(result.items[0]?.expectedAnswer,'Bonjour');
+});
+
 test('preserves the learner placements when correcting drag and drop', () => {
   const result = buildResultCorrection('drag-drop',{mode:'association',categories:[{id:'a',label:'Avant'},{id:'b',label:'Après'}],items:[{id:'one',label:'Baliser',category:'a',explanation:'Le balisage précède le lavage.'}]},[{itemId:'one',targetId:'b'}]);
   assert.equal(result.items[0]?.correct,false);

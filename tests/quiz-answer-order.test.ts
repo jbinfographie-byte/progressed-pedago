@@ -31,6 +31,25 @@ test('conserve un ordre stable pour une génération donnée', () => {
   );
 });
 
+test('répartit aussi les bonnes réponses d’un quiz audio', () => {
+  const items = Array.from({ length: 8 }, (_, index) => ({
+    spokenText: `Expression ${index + 1}`,
+    question: 'Quelle expression avez-vous entendue ?',
+    choices: [`Erreur A${index}`, `Expression ${index + 1}`, `Erreur C${index}`, `Erreur D${index}`],
+    correctIndex: 1,
+    explanation: 'Correction audio.',
+  }));
+
+  const result = diversifyGeneratedAnswerPositions({ items }, 'quiz-audio-1');
+  const diversified = result.items as typeof items;
+
+  assert.deepEqual(new Set(diversified.map((item) => item.correctIndex)), new Set([0, 1, 2, 3]));
+  assert.deepEqual(
+    diversified.map((item) => item.choices[item.correctIndex]),
+    items.map((item) => item.choices[item.correctIndex]),
+  );
+});
+
 test('diversifie aussi les exercices de fin de leçon sans changer la réponse attendue', () => {
   const coursePages = Array.from({ length: 4 }, (_, index) => ({
     id: `page-${index + 1}`,

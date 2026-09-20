@@ -64,6 +64,7 @@ ${externalInstruction}
 
 Exigences pour les mécaniques :
 - quiz et tv-quiz : 5 à 10 questions dans questions, exactement 4 choices plausibles, correctIndex varié, explanation détaillée pour chaque question. Répartis équitablement les bonnes réponses entre les positions A, B, C et D : ne mets jamais toutes les bonnes réponses à la même position ;
+- audio-quiz : content contient language au format BCP 47 (par exemple "fr-FR" ou "en-US"), speechRate entre 0.6 et 1.3, repeatAllowed:true et 5 à 15 items. Chaque item contient id, spokenText (mot, expression ou phrase réellement issu de la source), question, exactement 4 choices plausibles, correctIndex varié et explanation. Le texte prononcé ne doit pas être affiché dans la question. Répartis équitablement les bonnes réponses entre A, B, C et D ;
 - true-false : 6 à 10 statements avec answer et explanation ;
 - drag-drop : crée un jeu réellement jouable selon l’un de ces deux modèles. Modèle association : content contient mode:"association", une liste items[{id,label,category,explanation}] et autant de categories[{id,label,description}] ; category référence exactement l’id de la bonne définition. Modèle visuel : content contient mode:"visual", items[{id,label,category,explanation}] et zones[{id,label,description,imageUrl facultatif,x facultatif,y facultatif}] ; category référence exactement l’id du bon visuel. Utilise des étiquettes courtes, des définitions ou visuels sans ambiguïté, 4 à 8 associations et une explication pédagogique par réponse. Si une image de fond fiable est disponible, place son URL HTTPS dans imageUrl et donne aux zones des coordonnées x/y en pourcentage ; sinon, fournis une imageUrl HTTPS par zone ou utilise le modèle association. N’invente jamais une URL d’image ;
 - matching, categories et labelled-diagram : items munis de label et category, et categories ou zones clairement nommées ;
@@ -83,8 +84,8 @@ export function validateGeneratedExplanation(draft: ActivityDraft, depthValue: u
   if (depth === 'none') return null;
   const minimum = depth === 'detailed' ? 600 : 180;
   if (draft.explanation.trim().length < minimum) return `le mini-cours de « ${draft.title} » est trop court pour le niveau d’explication demandé.`;
-  if (draft.type === 'quiz' || draft.type === 'tv-quiz') {
-    const questions = Array.isArray(draft.content.questions) ? draft.content.questions as Array<{ explanation?: unknown }> : [];
+  if (draft.type === 'quiz' || draft.type === 'tv-quiz' || draft.type === 'audio-quiz') {
+    const questions = Array.isArray(draft.type === 'audio-quiz' ? draft.content.items : draft.content.questions) ? (draft.type === 'audio-quiz' ? draft.content.items : draft.content.questions) as Array<{ explanation?: unknown }> : [];
     const perQuestionMinimum = depth === 'detailed' ? 180 : 70;
     if (questions.some((question) => String(question.explanation ?? '').trim().length < perQuestionMinimum)) return `une ou plusieurs corrections du quiz « ${draft.title} » manquent de détails.`;
   }

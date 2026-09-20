@@ -27,6 +27,13 @@ test('le niveau détaillé demande un mini-cours structuré et exploite les fich
   assert.match(prompt,/A, B, C et D/);
 });
 
+test('le quiz audio demande une langue, un texte prononcé et des réponses variées', () => {
+  const prompt = buildGenerationPrompt('Créer un quiz audio de vocabulaire', ['audio-quiz'], { explanationDepth:'standard', audience:'adultes A1' });
+  assert.match(prompt,/audio-quiz/);
+  assert.match(prompt,/spokenText/);
+  assert.match(prompt,/A, B, C et D/);
+});
+
 test('le contrôle accepte un quiz réellement détaillé', () => {
   assert.equal(validateGeneratedExplanation(detailedQuiz,'detailed'), null);
 });
