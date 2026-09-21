@@ -64,3 +64,18 @@ test('le coach ne pénalise pas un accent intelligible et gère les embranchemen
   assert.match(instructions, /dialogue à embranchements/);
   assert.match(instructions, /4 tentatives guidées/);
 });
+
+test('les champs explicitement vidés par le formateur restent vides', () => {
+  const content = normalizeVoiceCoachContent({
+    learningLanguage: '', explanationLanguage: '', cefrLevel: '', topic: '',
+    professionalTheme: '', audience: '', aiRole: '', learnerRole: '',
+  });
+  assert.equal(content.learningLanguage, '');
+  assert.equal(content.explanationLanguage, '');
+  assert.equal(content.cefrLevel, '');
+  assert.equal(content.topic, '');
+  assert.equal(content.professionalTheme, '');
+  assert.equal(content.audience, '');
+  assert.equal(content.aiRole, '');
+  assert.equal(content.learnerRole, '');
+});

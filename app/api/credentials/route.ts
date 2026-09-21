@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { encryptedApiCredentials } from '@/db/schema';
-import { audit, requirePermission, requireUser } from '@/lib/auth';
+import { audit, requireAdmin, requireUser } from '@/lib/auth';
 import { AppError, assertSameOrigin, jsonError, jsonOk, readJson } from '@/lib/http';
 import { encryptSecret } from '@/lib/security';
 import { getOpenAiConnectionOverview, safeOpenAiModel } from '@/lib/ai-security';
@@ -11,14 +11,14 @@ export async function GET() {
   try {
     const user = await requireUser();
     const overview = await getOpenAiConnectionOverview(user.id);
-    return jsonOk({ ...overview, canManagePersonalConnection: user.permissions.manageAiConnection });
+    return jsonOk({ ...overview, canManagePersonalConnection: user.role === 'admin' });
   } catch (error) { return jsonError(error); }
 }
 
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-    const user = await requirePermission('manageAiConnection');
+    const user = await requireAdmin();
     const body = await readJson(request);
     const apiKey = String(body.apiKey ?? '').trim();
     const model = safeOpenAiModel(body.model);
@@ -41,5 +41,5 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  try { assertSameOrigin(request); const user = await requirePermission('manageAiConnection'); await getDb().delete(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)); await audit(user.id, 'credential.deleted', 'openai_credential', null, {}, request); return jsonOk({ message: 'La clé OpenAI a été supprimée.' }); } catch (error) { return jsonError(error); }
+  try { assertSameOrigin(request); const user = await requireAdmin(); await getDb().delete(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, user.id)); await audit(user.id, 'credential.deleted', 'openai_credential', null, {}, request); return jsonOk({ message: 'La clé OpenAI a été supprimée.' }); } catch (error) { return jsonError(error); }
 }

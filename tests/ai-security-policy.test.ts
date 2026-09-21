@@ -15,9 +15,11 @@ test('les garde-fous IA sont bornés et conservent des valeurs sûres',()=>{
   assert.equal(settings.maxJsonBytes,1_000_000);
 });
 
-test('la connexion personnelle reste prioritaire puis la connexion centrale prend le relais',()=>{
-  assert.equal(chooseOpenAiCredentialSource({hasPersonal:true,hasPlatform:true,hasAdministrator:true}),'personal');
+test('la connexion centrale reste prioritaire sur une ancienne clé personnelle',()=>{
+  assert.equal(chooseOpenAiCredentialSource({hasPersonal:true,hasPlatform:true,hasAdministrator:true}),'platform');
   assert.equal(chooseOpenAiCredentialSource({hasPersonal:false,hasPlatform:true,hasAdministrator:true}),'platform');
+  assert.equal(chooseOpenAiCredentialSource({hasPersonal:true,hasPlatform:false,hasAdministrator:true}),'administrator');
   assert.equal(chooseOpenAiCredentialSource({hasPersonal:false,hasPlatform:false,hasAdministrator:true}),'administrator');
+  assert.equal(chooseOpenAiCredentialSource({hasPersonal:true,hasPlatform:false,hasAdministrator:false}),'personal');
   assert.equal(chooseOpenAiCredentialSource({hasPersonal:false,hasPlatform:false,hasAdministrator:false}),null);
 });

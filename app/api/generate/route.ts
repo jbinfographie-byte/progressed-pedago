@@ -131,7 +131,7 @@ function buildExternalResourceDraft(body:Record<string,unknown>,sourceUrl:string
   const analysis=body.externalAnalysis&&typeof body.externalAnalysis==='object'?body.externalAnalysis as Record<string,unknown>:{};
   const raw=body.externalResource&&typeof body.externalResource==='object'?body.externalResource as Record<string,unknown>:{};
   const questions=Array.isArray(analysis.questions)?analysis.questions:[];
-  const game=normalizeExternalGameContent({...raw,sourceUrl,paper:{...(raw.paper&&typeof raw.paper==='object'?raw.paper as Record<string,unknown>:{}),questions}});
+  const game=normalizeExternalGameContent({...raw,sourceUrl,scenario:analysis.scenario??raw.scenario,paper:{...(raw.paper&&typeof raw.paper==='object'?raw.paper as Record<string,unknown>:{}),questions}});
   const title=String(analysis.title??body.externalTitle??'Activité externe intégrée').trim().slice(0,240)||'Activité externe intégrée';
   const theme=String(analysis.theme??'Ressource pédagogique externe').trim().slice(0,200)||'Ressource pédagogique externe';
   const audience=String(analysis.audience??body.audience??'Adultes en formation professionnelle').trim().slice(0,240);

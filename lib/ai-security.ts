@@ -4,7 +4,7 @@ import { getDb } from '@/db';
 import { appSettings, encryptedApiCredentials, users } from '@/db/schema';
 import { AppError, readJson } from '@/lib/http';
 import { decryptSecret } from '@/lib/security';
-import { AI_SECURITY_DEFAULTS, normalizeAiSecuritySettings, safeOpenAiModel, type AiSecuritySettings, type OpenAiCredentialSource } from '@/lib/ai-security-policy';
+import { AI_SECURITY_DEFAULTS, chooseOpenAiCredentialSource, normalizeAiSecuritySettings, safeOpenAiModel, type AiSecuritySettings, type OpenAiCredentialSource } from '@/lib/ai-security-policy';
 export { AI_SECURITY_DEFAULTS, safeOpenAiModel } from '@/lib/ai-security-policy';
 
 export async function getAiSecuritySettings(): Promise<AiSecuritySettings> {
@@ -17,6 +17,7 @@ export async function getAiSecuritySettings(): Promise<AiSecuritySettings> {
 
 async function activeAdministratorCredential() {
   return (await getDb().select({
+    trainerId: encryptedApiCredentials.trainerId,
     ciphertext: encryptedApiCredentials.ciphertext,
     iv: encryptedApiCredentials.iv,
     model: encryptedApiCredentials.model,
@@ -34,18 +35,24 @@ export async function getOpenAiConnectionOverview(trainerId: string) {
     model: encryptedApiCredentials.model,
     validatedAt: encryptedApiCredentials.validatedAt,
   }).from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, trainerId)).limit(1))[0];
-  if (personal) return { connected: true, connectionMode: 'personal' as const, credential: personal };
-  if (env.OPENAI_API_KEY) return { connected: true, connectionMode: 'platform' as const, credential: null };
   const administrator = await activeAdministratorCredential();
-  return { connected: Boolean(administrator), connectionMode: administrator ? 'administrator' as const : 'none' as const, credential: null };
+  const source = chooseOpenAiCredentialSource({ hasPersonal: Boolean(personal), hasPlatform: Boolean(env.OPENAI_API_KEY), hasAdministrator: Boolean(administrator) });
+  if (source === 'platform') return { connected: true, connectionMode: 'platform' as const, credential: null };
+  if (source === 'administrator') {
+    if (personal && administrator?.trainerId === trainerId) return { connected: true, connectionMode: 'personal' as const, credential: personal };
+    return { connected: true, connectionMode: 'administrator' as const, credential: null };
+  }
+  if (source === 'personal') return { connected: true, connectionMode: 'personal' as const, credential: personal };
+  return { connected: false, connectionMode: 'none' as const, credential: null };
 }
 
 export async function resolveOpenAiCredential(trainerId: string): Promise<{ apiKey: string; model: string; source: OpenAiCredentialSource }> {
   const personal = (await getDb().select().from(encryptedApiCredentials).where(eq(encryptedApiCredentials.trainerId, trainerId)).limit(1))[0];
-  if (personal) return { apiKey: await decryptSecret(personal.ciphertext, personal.iv, env.MASTER_ENCRYPTION_KEY), model: safeOpenAiModel(personal.model, env.OPENAI_MODEL), source: 'personal' };
-  if (env.OPENAI_API_KEY) return { apiKey: env.OPENAI_API_KEY, model: safeOpenAiModel(env.OPENAI_MODEL), source: 'platform' };
   const administrator = await activeAdministratorCredential();
-  if (administrator) return { apiKey: await decryptSecret(administrator.ciphertext, administrator.iv, env.MASTER_ENCRYPTION_KEY), model: safeOpenAiModel(administrator.model, env.OPENAI_MODEL), source: 'administrator' };
+  const source = chooseOpenAiCredentialSource({ hasPersonal: Boolean(personal), hasPlatform: Boolean(env.OPENAI_API_KEY), hasAdministrator: Boolean(administrator) });
+  if (source === 'platform') return { apiKey: env.OPENAI_API_KEY!, model: safeOpenAiModel(env.OPENAI_MODEL), source };
+  if (source === 'administrator' && administrator) return { apiKey: await decryptSecret(administrator.ciphertext, administrator.iv, env.MASTER_ENCRYPTION_KEY), model: safeOpenAiModel(administrator.model, env.OPENAI_MODEL), source };
+  if (source === 'personal' && personal) return { apiKey: await decryptSecret(personal.ciphertext, personal.iv, env.MASTER_ENCRYPTION_KEY), model: safeOpenAiModel(personal.model, env.OPENAI_MODEL), source };
   throw new AppError(409, 'Aucune connexion IA sécurisée n’est disponible. Contactez l’administrateur.', 'OPENAI_NOT_CONNECTED');
 }
 

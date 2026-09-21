@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_PLAN_CONFIGURATIONS, nextMonthlyReset, normalizePlanFeatures, SUBSCRIPTION_FEATURES, usageAlert, usagePercent } from '../lib/subscriptions.ts';
+import { readFileSync } from 'node:fs';
+import { DEFAULT_PLAN_CONFIGURATIONS, hasUnlimitedAccess, nextMonthlyReset, normalizePlanFeatures, SUBSCRIPTION_FEATURES, usageAlert, usagePercent } from '../lib/subscriptions.ts';
+
+const dashboard = readFileSync(new URL('../components/progressed-app.tsx', import.meta.url), 'utf8');
+
+test('le rôle administrateur est toujours illimité', () => {
+  assert.equal(hasUnlimitedAccess('admin', false), true);
+  assert.equal(hasUnlimitedAccess('trainer', false), false);
+  assert.equal(hasUnlimitedAccess('learner', false), false);
+  assert.equal(hasUnlimitedAccess('trainer', true), true);
+});
+
+test('le tableau de bord administrateur ne présente aucun quota personnel', () => {
+  assert.match(dashboard, /if\(!data\|\|data\.unlimited\)return null/);
+});
 
 test('les trois formules sont configurables et cumulatives', () => {
   assert.deepEqual(DEFAULT_PLAN_CONFIGURATIONS.map((plan) => plan.id), ['essential','coach','intensive']);

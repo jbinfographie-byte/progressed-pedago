@@ -17,6 +17,10 @@ export const SUBSCRIPTION_FEATURES = [
 export type SubscriptionFeature = (typeof SUBSCRIPTION_FEATURES)[number];
 export type PlanFeatures = Record<SubscriptionFeature, boolean>;
 
+export function hasUnlimitedAccess(role: 'admin' | 'trainer' | 'learner', storedUnlimited = false): boolean {
+  return role === 'admin' || storedUnlimited;
+}
+
 export const FEATURE_LABELS: Record<SubscriptionFeature, string> = {
   courses: 'Cours',
   sheets: 'Fiches pédagogiques',
