@@ -7,6 +7,7 @@ import {
   DEFAULT_PLAN_CONFIGURATIONS,
   dayKey,
   FEATURE_LABELS,
+  hasUnlimitedAccess,
   monthKey,
   nextMonthlyReset,
   normalizeCreditCosts,
@@ -30,8 +31,13 @@ export async function ensurePlanCatalog(): Promise<void> {
 
 export async function ensureUserSubscription(userId: string, role: 'admin' | 'trainer' | 'learner'): Promise<void> {
   await ensurePlanCatalog();
-  const existing = await getDb().select({ userId: userSubscriptions.userId }).from(userSubscriptions).where(eq(userSubscriptions.userId, userId)).limit(1);
-  if (existing.length) return;
+  const existing = await getDb().select({ userId: userSubscriptions.userId, unlimited: userSubscriptions.unlimited }).from(userSubscriptions).where(eq(userSubscriptions.userId, userId)).limit(1);
+  if (existing.length) {
+    if (role === 'admin' && !existing[0]!.unlimited) {
+      await getDb().update(userSubscriptions).set({ unlimited: true, status: 'active', updatedAt: Math.floor(Date.now() / 1000) }).where(eq(userSubscriptions.userId, userId));
+    }
+    return;
+  }
   const planId: PlanId = role === 'admin' ? 'intensive' : 'essential';
   const plan = DEFAULT_PLAN_CONFIGURATIONS.find((item) => item.id === planId)!;
   const now = Math.floor(Date.now() / 1000);
@@ -63,18 +69,20 @@ export async function getUserEntitlement(userId: string, role: 'admin' | 'traine
   const overrides = await getDb().select().from(userFeatureOverrides).where(and(eq(userFeatureOverrides.userId, userId), or(isNull(userFeatureOverrides.expiresAt), gt(userFeatureOverrides.expiresAt, now))));
   const features = normalizePlanFeatures(row.plan.featuresJson);
   for (const override of overrides) if (override.feature in features) features[override.feature as SubscriptionFeature] = override.allowed;
+  if (role === 'admin') for (const feature of Object.keys(features) as SubscriptionFeature[]) features[feature] = true;
   const expired = row.subscription.endsAt !== null && row.subscription.endsAt <= now;
   const usable = role === 'admin' || (!expired && ['active', 'trial', 'free'].includes(row.subscription.status));
   if (!usable) for (const feature of Object.keys(features) as SubscriptionFeature[]) features[feature] = ['courses', 'sheets', 'quizzes', 'basicExercises'].includes(feature);
-  const monthlyVoiceLimit = row.subscription.unlimited ? Number.MAX_SAFE_INTEGER : row.subscription.voiceMonthlyOverrideSeconds ?? row.plan.monthlyVoiceSeconds;
-  const dailyVoiceLimit = row.subscription.unlimited ? Number.MAX_SAFE_INTEGER : row.subscription.voiceDailyOverrideSeconds ?? row.plan.dailyVoiceSeconds;
-  const creditsAvailable = row.subscription.unlimited ? Number.MAX_SAFE_INTEGER : row.subscription.creditsRemaining + row.subscription.extraCredits;
-  const voicePercent = row.subscription.unlimited ? 0 : usagePercent(row.subscription.voiceSecondsMonth, monthlyVoiceLimit);
+  const unlimited = hasUnlimitedAccess(role, row.subscription.unlimited);
+  const monthlyVoiceLimit = unlimited ? Number.MAX_SAFE_INTEGER : row.subscription.voiceMonthlyOverrideSeconds ?? row.plan.monthlyVoiceSeconds;
+  const dailyVoiceLimit = unlimited ? Number.MAX_SAFE_INTEGER : row.subscription.voiceDailyOverrideSeconds ?? row.plan.dailyVoiceSeconds;
+  const creditsAvailable = unlimited ? Number.MAX_SAFE_INTEGER : row.subscription.creditsRemaining + row.subscription.extraCredits;
+  const voicePercent = unlimited ? 0 : usagePercent(row.subscription.voiceSecondsMonth, monthlyVoiceLimit);
   const apiBudgetMicros = row.subscription.apiBudgetOverrideMicros ?? row.plan.monthlyApiBudgetMicros;
-  const apiPercent = row.subscription.unlimited ? 0 : usagePercent(row.subscription.apiCostMicrosMonth, apiBudgetMicros);
+  const apiPercent = unlimited ? 0 : usagePercent(row.subscription.apiCostMicrosMonth, apiBudgetMicros);
   return {
     userId, plan: { ...row.plan, features, creditCosts: normalizeCreditCosts(row.plan.creditCostsJson) }, subscription: row.subscription,
-    features, overrides, expired, usable, monthlyVoiceLimit, dailyVoiceLimit, creditsAvailable, apiBudgetMicros, voicePercent, apiPercent,
+    features, overrides, expired, usable, unlimited, monthlyVoiceLimit, dailyVoiceLimit, creditsAvailable, apiBudgetMicros, voicePercent, apiPercent,
     alert: usageAlert(voicePercent),
   };
 }
@@ -95,11 +103,13 @@ export async function preflightAiUsage(userId: string, role: 'admin' | 'trainer'
     getDb().select({ id: aiUsageEvents.id }).from(aiUsageEvents).where(and(eq(aiUsageEvents.status,'started'),gt(aiUsageEvents.createdAt, now - 86_400))).limit(settings.globalRequestsPerDay + 1),
     getDb().select({ total: sql<number>`coalesce(sum(coalesce(${aiUsageEvents.actualCostMicros}, ${aiUsageEvents.estimatedCostMicros})), 0)` }).from(aiUsageEvents).where(gt(aiUsageEvents.createdAt, now - 86_400)),
   ]);
-  if (recent.length >= settings.requestsPerMinute) throw new AppError(429, 'Trop de demandes ont été envoyées. Patientez une minute avant de réessayer.', 'AI_RATE_LIMIT');
-  if (daily.length >= settings.requestsPerDay) throw new AppError(429, 'Votre limite d’utilisation pour aujourd’hui est atteinte. Vous pourrez réessayer demain.', 'AI_DAILY_LIMIT_REACHED');
   if (globalDaily.length >= settings.globalRequestsPerDay || Number(globalCost[0]?.total ?? 0) >= settings.globalDailyBudgetMicros) throw new AppError(503, 'Les fonctions IA sont temporairement en pause par mesure de sécurité. Les contenus déjà créés restent disponibles.', 'AI_GLOBAL_SAFETY_LIMIT');
+  if (!entitlement.unlimited) {
+    if (recent.length >= settings.requestsPerMinute) throw new AppError(429, 'Trop de demandes ont été envoyées. Patientez une minute avant de réessayer.', 'AI_RATE_LIMIT');
+    if (daily.length >= settings.requestsPerDay) throw new AppError(429, 'Votre limite d’utilisation pour aujourd’hui est atteinte. Vous pourrez réessayer demain.', 'AI_DAILY_LIMIT_REACHED');
+  }
   await getDb().insert(aiUsageEvents).values({ id: crypto.randomUUID(), userId, feature: `${feature}_request`, status: 'started', requestId: `preflight:${crypto.randomUUID()}`, metadataJson: JSON.stringify({ voice: options.voice === true }), createdAt: now });
-  if (entitlement.subscription.unlimited) return entitlement;
+  if (entitlement.unlimited) return entitlement;
   if (entitlement.creditsAvailable < (options.minimumCredits ?? 1)) throw new AppError(429, 'Votre solde de crédits IA est épuisé. Les contenus déjà créés restent disponibles.', 'AI_CREDITS_EXHAUSTED');
   if (entitlement.apiBudgetMicros > 0 && entitlement.subscription.apiCostMicrosMonth >= entitlement.apiBudgetMicros) throw new AppError(429, 'La limite mensuelle des fonctions IA dynamiques est atteinte. Les cours et exercices déjà créés restent disponibles.', 'AI_BUDGET_REACHED');
   if (options.voice && (entitlement.subscription.voiceSecondsMonth >= entitlement.monthlyVoiceLimit || entitlement.subscription.voiceSecondsDay >= entitlement.dailyVoiceLimit)) throw new AppError(429, 'Votre quota vocal est atteint. Vous pouvez continuer en mode texte jusqu’au renouvellement.', 'VOICE_QUOTA_REACHED');
@@ -114,7 +124,7 @@ export async function recordAiUsage(input: { userId: string; feature: string; mo
   const subscription = (await getDb().select().from(userSubscriptions).where(eq(userSubscriptions.userId, input.userId)).limit(1))[0];
   if (!subscription) return false;
   const audioSeconds = Math.max(0, Math.round(input.audioSeconds ?? 0));
-  const credits = Math.max(0, Math.round(input.creditsCharged ?? 0));
+  const credits = subscription.unlimited ? 0 : Math.max(0, Math.round(input.creditsCharged ?? 0));
   const cost = Math.max(0, Math.round(input.actualCostMicros ?? input.estimatedCostMicros ?? 0));
   const fromMonthly = Math.min(subscription.creditsRemaining, credits);
   const fromExtra = Math.max(0, credits - fromMonthly);

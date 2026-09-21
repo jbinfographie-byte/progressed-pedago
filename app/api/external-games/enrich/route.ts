@@ -9,6 +9,7 @@ import { extractExternalGameUrl, providerFromExternalGameUrl, providerLabel } fr
 import { resolveSourceMaterial, sourcePromptBlock } from '@/lib/source-ingestion';
 import { transcribeMediaWithOpenAI } from '@/lib/media-transcription';
 import { preflightAiUsage } from '@/lib/subscriptions-server';
+import { resolveWordwallEmbed } from '@/lib/wordwall';
 
 type ExternalAnalysis = {
   title: string;
@@ -27,6 +28,7 @@ type ExternalAnalysis = {
   summary: string;
   memo: string;
   questions: Array<{ question: string; answer: string }>;
+  scenario:{title:string;context:string;aiRole:string;learnerRole:string;mission:string;prompts:string[]};
 };
 
 export async function POST(request: Request) {
@@ -37,7 +39,9 @@ export async function POST(request: Request) {
     const sourceUrl = extractExternalGameUrl(String(body.sourceUrl ?? body.embedUrl ?? ''));
     if (!sourceUrl) throw new AppError(400, 'Ajoutez d’abord un lien HTTPS ou un code iframe valide.', 'EXTERNAL_GAME_URL_REQUIRED');
 
-    const supportText = [body.description,body.supportText,body.transcript].map((value)=>String(value ?? '').trim()).filter(Boolean).join('\n\n').slice(0,60_000);
+    const provider = providerFromExternalGameUrl(sourceUrl);
+    const resolvedEmbed=provider==='wordwall'?await resolveWordwallEmbed(sourceUrl):null;
+    const supportText = [body.description,body.supportText,body.transcript,resolvedEmbed?.title?`Titre Wordwall : ${resolvedEmbed.title}`:''].map((value)=>String(value ?? '').trim()).filter(Boolean).join('\n\n').slice(0,60_000);
     const supportFileIds = [...new Set(Array.isArray(body.supportFileIds) ? body.supportFileIds.map(String).filter(Boolean) : [])].slice(0,6);
     const credential = await resolveOpenAiCredential(user.id); const apiKey = credential.apiKey;
 
@@ -55,7 +59,6 @@ export async function POST(request: Request) {
       throw new AppError(422,`${sourceFailure || 'Cette ressource ne peut pas être analysée directement.'} Ajoutez une capture d’écran, un PDF, le texte de l’activité, ses questions-réponses, une transcription ou une courte description. Aucune analyse n’a été inventée.`,'EXTERNAL_RESOURCE_SUPPORT_REQUIRED');
     }
 
-    const provider = providerFromExternalGameUrl(sourceUrl);
     const focus = Array.isArray(body.focus) ? body.focus.map(String).slice(0,12) : [];
     const selectedOutputs = Array.isArray(body.selectedOutputs) ? body.selectedOutputs.map(String).slice(0,16) : [];
     const content: Array<Record<string,unknown>> = [{type:'input_text',text:`Analyse une ressource pédagogique externe pour préparer des livrables cohérents.
@@ -93,18 +96,19 @@ Ne déduis jamais les questions ou les réponses du seul titre ou du nom de doma
     if (!output) throw new AppError(502, 'L’IA n’a renvoyé aucun contenu exploitable.', 'OPENAI_EMPTY_OUTPUT');
     let analysis: ExternalAnalysis;
     try { analysis = JSON.parse(output) as ExternalAnalysis; } catch { throw new AppError(502, 'La réponse reçue est invalide. Relancez l’analyse.', 'OPENAI_INVALID_JSON'); }
-    return jsonOk({ analysis,provider,providerLabel:providerLabel(provider),analysisMethod:source?.analysisMethod ?? 'support_files',sourceReadable:Boolean(source),message:source ? 'La ressource et les éléments fournis ont été analysés. Vérifiez puis ajustez l’aperçu.' : 'Le lien ne pouvait pas être lu directement : l’analyse utilise uniquement les éléments que vous avez fournis.' });
+    return jsonOk({ analysis,provider,providerLabel:providerLabel(provider),embedUrl:resolvedEmbed?.embedUrl??sourceUrl,presentationImageUrl:resolvedEmbed?.thumbnailUrl??'',resolvedTitle:resolvedEmbed?.title??'',analysisMethod:source?.analysisMethod ?? 'support_files',sourceReadable:Boolean(source),message:source ? 'La ressource et les éléments fournis ont été analysés. Vérifiez puis ajustez l’aperçu.' : 'Le lien ne pouvait pas être lu directement : l’analyse utilise uniquement les éléments que vous avez fournis.' });
   } catch (error) { return jsonError(error); }
 }
 
 const analysisSchema = {
   type:'object',additionalProperties:false,
-  required:['title','theme','audience','level','difficulty','objectives','instructions','concepts','introduction','preGameExplanation','learnerTips','debrief','correction','summary','memo','questions'],
+  required:['title','theme','audience','level','difficulty','objectives','instructions','concepts','introduction','preGameExplanation','learnerTips','debrief','correction','summary','memo','questions','scenario'],
   properties:{
     title:{type:'string'},theme:{type:'string'},audience:{type:'string'},level:{type:'string',enum:['debutant','intermediaire','avance']},difficulty:{type:'string'},
     objectives:{type:'array',minItems:2,maxItems:8,items:{type:'string'}},instructions:{type:'string'},concepts:{type:'array',minItems:2,maxItems:12,items:{type:'string'}},
     introduction:{type:'string'},preGameExplanation:{type:'string'},learnerTips:{type:'array',minItems:3,maxItems:8,items:{type:'string'}},debrief:{type:'string'},correction:{type:'string'},summary:{type:'string'},memo:{type:'string'},
     questions:{type:'array',minItems:3,maxItems:12,items:{type:'object',additionalProperties:false,required:['question','answer'],properties:{question:{type:'string'},answer:{type:'string'}}}},
+    scenario:{type:'object',additionalProperties:false,required:['title','context','aiRole','learnerRole','mission','prompts'],properties:{title:{type:'string'},context:{type:'string'},aiRole:{type:'string'},learnerRole:{type:'string'},mission:{type:'string'},prompts:{type:'array',minItems:3,maxItems:10,items:{type:'string'}}}},
   },
 };
 

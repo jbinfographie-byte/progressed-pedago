@@ -5,6 +5,7 @@ export type ExternalGameScoreMode = 'manual_completion' | 'self_report';
 export type ExternalResourceOutput = 'course' | 'summary' | 'memo' | 'explanations' | 'quiz' | 'true-false' | 'open-questions' | 'scenario' | 'case-study' | 'exercise' | 'correction' | 'pdf';
 
 export type ExternalGameQuestion = { question: string; answer: string };
+export type ExternalGameScenario = { title:string;context:string;aiRole:string;learnerRole:string;mission:string;prompts:string[] };
 export type ExternalGamePaperOptions = {
   includeQr: boolean;
   includeExplanations: boolean;
@@ -34,6 +35,7 @@ export type ExternalGameContent = {
   debrief: string;
   summary: string;
   memo: string;
+  scenario: ExternalGameScenario;
   supportText: string;
   supportFileIds: string[];
   selectedOutputs: ExternalResourceOutput[];
@@ -56,6 +58,7 @@ export const DEFAULT_EXTERNAL_GAME_CONTENT: ExternalGameContent = {
   debrief: '',
   summary: '',
   memo: '',
+  scenario: { title:'',context:'',aiRole:'',learnerRole:'',mission:'',prompts:[] },
   supportText: '',
   supportFileIds: [],
   selectedOutputs: ['course','summary','explanations','quiz','correction','pdf'],
@@ -162,7 +165,18 @@ export function externalResourceEmbedUrl(value: string): string {
   if (youtubeId) return `https://www.youtube-nocookie.com/embed/${youtubeId}`;
   const vimeoId = parseVimeoVideoId(source);
   if (vimeoId) return `https://player.vimeo.com/video/${vimeoId}`;
+  if (providerFromExternalGameUrl(source)==='wordwall') return isWordwallEmbedUrl(source) ? source : '';
   return source;
+}
+
+export function isWordwallEmbedUrl(value:string):boolean {
+  const source=normalizeExternalGameUrl(value);if(!source||providerFromExternalGameUrl(source)!=='wordwall')return false;
+  try{return /\/(?:[a-z]{2}\/)?embed\//i.test(new URL(source).pathname);}catch{return false;}
+}
+
+export function wordwallEmbedFromOEmbedHtml(value:string):string {
+  const source=extractExternalGameUrl(value);
+  return source&&isWordwallEmbedUrl(source)?source:'';
 }
 
 export function normalizeExternalGameContent(value: unknown): ExternalGameContent {
@@ -176,6 +190,7 @@ export function normalizeExternalGameContent(value: unknown): ExternalGameConten
     const question = text(row.question); const answer = text(row.answer);
     return question ? [{ question, answer }] : [];
   }).slice(0, 40) : [];
+  const scenarioSource=source.scenario&&typeof source.scenario==='object'&&!Array.isArray(source.scenario)?source.scenario as Record<string,unknown>:{};
   return {
     version: 2,
     provider: providerFromExternalGameUrl(sourceUrl || embedUrl),
@@ -190,6 +205,7 @@ export function normalizeExternalGameContent(value: unknown): ExternalGameConten
     debrief: text(source.debrief),
     summary: text(source.summary),
     memo: text(source.memo),
+    scenario:{title:text(scenarioSource.title).slice(0,220),context:text(scenarioSource.context).slice(0,4_000),aiRole:text(scenarioSource.aiRole).slice(0,220),learnerRole:text(scenarioSource.learnerRole).slice(0,220),mission:text(scenarioSource.mission).slice(0,2_000),prompts:Array.isArray(scenarioSource.prompts)?scenarioSource.prompts.map(text).filter(Boolean).slice(0,12):[]},
     supportText: text(source.supportText).slice(0,60_000),
     supportFileIds: Array.isArray(source.supportFileIds) ? source.supportFileIds.map(safeId).filter(Boolean).slice(0,6) : [],
     selectedOutputs: normalizeOutputs(source.selectedOutputs),

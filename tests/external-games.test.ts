@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { externalGameValidationErrors, externalResourceEmbedUrl, extractExternalGameUrl, inspectExternalHtml, normalizeExternalGameContent, providerFromExternalGameUrl } from '../lib/external-games.ts';
+import { externalGameValidationErrors, externalResourceEmbedUrl, extractExternalGameUrl, inspectExternalHtml, normalizeExternalGameContent, providerFromExternalGameUrl, wordwallEmbedFromOEmbedHtml } from '../lib/external-games.ts';
 
 test('extrait uniquement la source HTTPS d’un iframe Wordwall',()=>{
   const input='<iframe style="max-width:100%" src="https://wordwall.net/fr/embed/b54fc7aa480c4254876c2d199faa26c0?themeId=1" onload="alert(1)" allowfullscreen></iframe>';
@@ -49,6 +49,15 @@ test('reconnaît et prépare les ressources Wordwall, vidéo et autres services'
   assert.equal(providerFromExternalGameUrl('https://example.org/activity'),'other');
   assert.equal(externalResourceEmbedUrl('https://youtu.be/dQw4w9WgXcQ'),'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ');
   assert.equal(externalResourceEmbedUrl('https://vimeo.com/76979871'),'https://player.vimeo.com/video/76979871');
+  assert.equal(externalResourceEmbedUrl('https://wordwall.net/fr/resource/12345/mon-quiz'),'');
+  assert.equal(externalResourceEmbedUrl('https://wordwall.net/fr/embed/demo'),'https://wordwall.net/fr/embed/demo');
+  assert.equal(wordwallEmbedFromOEmbedHtml('<iframe src="https://wordwall.net/fr/embed/demo?themeId=1"></iframe>'),'https://wordwall.net/fr/embed/demo?themeId=1');
+});
+
+test('conserve une mise en situation générée à partir de la ressource',()=>{
+  const resource=normalizeExternalGameContent({sourceUrl:'https://wordwall.net/fr/embed/demo',scenario:{title:'Accueil difficile',context:'Un visiteur conteste une consigne.',aiRole:'Visiteur',learnerRole:'Agent',mission:'Répondre avec calme.',prompts:['Accueillez le visiteur.']}});
+  assert.equal(resource.scenario.title,'Accueil difficile');
+  assert.deepEqual(resource.scenario.prompts,['Accueillez le visiteur.']);
 });
 
 test('conserve les livrables choisis et les appuis fournis',()=>{

@@ -1,7 +1,7 @@
 import { AppError } from './http.ts';
 import { normalizeVoiceCoachContent, voiceCoachInstructions } from './voice-coach.ts';
 
-export const VOICE_REALTIME_MODEL='gpt-realtime';
+export const VOICE_REALTIME_MODEL='gpt-realtime-2';
 
 export async function createVoiceCoachClientSecret(apiKey:string,content:unknown,safetyIdentifier:string,transcribe:boolean) {
   const config=normalizeVoiceCoachContent(content);
