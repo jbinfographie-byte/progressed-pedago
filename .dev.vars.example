@@ -1,5 +1,10 @@
 MASTER_ENCRYPTION_KEY=base64-de-32-octets
 SECURITY_PEPPER=chaine-aleatoire-longue
+DATABASE_URL=
+DATABASE_POOL_SIZE=5
+SUPABASE_URL=https://votre-projet.supabase.co
+SUPABASE_SECRET_KEY=
+SUPABASE_STORAGE_BUCKET=progressed-pedago
 INITIAL_ADMIN_EMAIL=administrateur@example.fr
 INITIAL_ADMIN_BOOTSTRAP_TOKEN=jeton-de-secours-hors-interface
 OPENAI_MODEL=gpt-5.5

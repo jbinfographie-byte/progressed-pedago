@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime-env';
 import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { courseFolders, learnerParticipants, learningPaths, trainingShares } from '@/db/schema';

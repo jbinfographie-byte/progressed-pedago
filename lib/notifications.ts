@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime-env';
 
 export async function sendTransactionalEmail(input: { to: string; subject: string; text: string }): Promise<boolean> {
   if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL || !input.to) return false;

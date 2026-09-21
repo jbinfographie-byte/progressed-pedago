@@ -1,4 +1,4 @@
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime-env';
 import { desc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { supportAttachments, supportMessages, supportTickets } from '@/db/schema';

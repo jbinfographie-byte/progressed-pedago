@@ -1,5 +1,5 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
-import { env } from 'cloudflare:workers';
+import { env } from '@/lib/runtime-env';
 import { getDb } from '@/db';
 import { activationCodes, trainerAccessRequests, users } from '@/db/schema';
 import { audit, createSession } from '@/lib/auth';

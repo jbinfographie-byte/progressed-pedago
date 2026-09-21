@@ -1,9 +1,9 @@
 import { sql } from 'drizzle-orm';
-import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { boolean, check, index, integer, pgTable, text, uniqueIndex } from 'drizzle-orm/pg-core';
 
-const now = sql`(unixepoch())`;
+const now = sql`(extract(epoch from now())::integer)`;
 
-export const users = sqliteTable('users', {
+export const users = pgTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
   displayName: text('display_name'),
@@ -23,7 +23,7 @@ export const users = sqliteTable('users', {
   check('ck_users_email_lower', sql`${table.email} = lower(${table.email})`),
 ]);
 
-export const trainerAccessRequests = sqliteTable('trainer_access_requests', {
+export const trainerAccessRequests = pgTable('trainer_access_requests', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   status: text('status', { enum: ['pending', 'approved', 'refused'] }).notNull().default('pending'),
@@ -36,7 +36,7 @@ export const trainerAccessRequests = sqliteTable('trainer_access_requests', {
   index('idx_access_requests_trainer').on(table.trainerId),
 ]);
 
-export const trainerPermissions = sqliteTable('trainer_permissions', {
+export const trainerPermissions = pgTable('trainer_permissions', {
   trainerId: text('trainer_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   accessLevel: text('access_level', { enum: ['limited', 'medium', 'extended', 'custom'] }).notNull().default('limited'),
   permissionsJson: text('permissions_json').notNull().default('{"createActivities":true,"editActivities":true,"deleteActivities":false,"publishActivities":false,"useAi":false,"uploadDocuments":false,"viewResults":true,"exportResults":false,"manageResources":false,"manageAiConnection":false}'),
@@ -44,7 +44,7 @@ export const trainerPermissions = sqliteTable('trainer_permissions', {
   updatedAt: integer('updated_at').notNull().default(now),
 });
 
-export const subscriptionPlans = sqliteTable('subscription_plans', {
+export const subscriptionPlans = pgTable('subscription_plans', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   priceCents: integer('price_cents').notNull().default(0),
@@ -55,7 +55,7 @@ export const subscriptionPlans = sqliteTable('subscription_plans', {
   monthlyApiBudgetMicros: integer('monthly_api_budget_micros').notNull().default(0),
   featuresJson: text('features_json').notNull().default('{}'),
   creditCostsJson: text('credit_costs_json').notNull().default('{}'),
-  active: integer('active', { mode: 'boolean' }).notNull().default(true),
+  active: boolean('active').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at').notNull().default(now),
   updatedAt: integer('updated_at').notNull().default(now),
@@ -64,7 +64,7 @@ export const subscriptionPlans = sqliteTable('subscription_plans', {
   check('ck_subscription_plans_limits', sql`${table.priceCents} >= 0 AND ${table.monthlyVoiceSeconds} >= 0 AND ${table.dailyVoiceSeconds} >= 0 AND ${table.monthlyCredits} >= 0 AND ${table.monthlyApiBudgetMicros} >= 0`),
 ]);
 
-export const userSubscriptions = sqliteTable('user_subscriptions', {
+export const userSubscriptions = pgTable('user_subscriptions', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   planId: text('plan_id').notNull().references(() => subscriptionPlans.id),
   status: text('status', { enum: ['active', 'trial', 'free', 'suspended', 'expired', 'canceled'] }).notNull().default('free'),
@@ -83,7 +83,7 @@ export const userSubscriptions = sqliteTable('user_subscriptions', {
   creditsMonthlyOverride: integer('credits_monthly_override'),
   dayKey: text('day_key').notNull(),
   monthKey: text('month_key').notNull(),
-  unlimited: integer('unlimited', { mode: 'boolean' }).notNull().default(false),
+  unlimited: boolean('unlimited').notNull().default(false),
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [
   index('idx_user_subscriptions_plan_status').on(table.planId, table.status),
@@ -91,11 +91,11 @@ export const userSubscriptions = sqliteTable('user_subscriptions', {
   check('ck_user_subscriptions_usage', sql`${table.creditsRemaining} >= 0 AND ${table.extraCredits} >= 0 AND ${table.voiceSecondsMonth} >= 0 AND ${table.voiceSecondsDay} >= 0 AND ${table.apiCostMicrosMonth} >= 0 AND (${table.voiceMonthlyOverrideSeconds} IS NULL OR ${table.voiceMonthlyOverrideSeconds} >= 0) AND (${table.voiceDailyOverrideSeconds} IS NULL OR ${table.voiceDailyOverrideSeconds} >= 0) AND (${table.apiBudgetOverrideMicros} IS NULL OR ${table.apiBudgetOverrideMicros} >= 0) AND (${table.creditsMonthlyOverride} IS NULL OR ${table.creditsMonthlyOverride} >= 0)`),
 ]);
 
-export const userFeatureOverrides = sqliteTable('user_feature_overrides', {
+export const userFeatureOverrides = pgTable('user_feature_overrides', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   feature: text('feature').notNull(),
-  allowed: integer('allowed', { mode: 'boolean' }).notNull(),
+  allowed: boolean('allowed').notNull(),
   expiresAt: integer('expires_at'),
   note: text('note').notNull().default(''),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
@@ -106,7 +106,7 @@ export const userFeatureOverrides = sqliteTable('user_feature_overrides', {
   index('idx_user_feature_overrides_expiry').on(table.userId, table.expiresAt),
 ]);
 
-export const aiUsageEvents = sqliteTable('ai_usage_events', {
+export const aiUsageEvents = pgTable('ai_usage_events', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   feature: text('feature').notNull(),
@@ -128,7 +128,7 @@ export const aiUsageEvents = sqliteTable('ai_usage_events', {
   check('ck_ai_usage_events_amounts', sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.audioSeconds} >= 0 AND ${table.estimatedCostMicros} >= 0 AND ${table.creditsCharged} >= 0`),
 ]);
 
-export const creditTransactions = sqliteTable('credit_transactions', {
+export const creditTransactions = pgTable('credit_transactions', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   amount: integer('amount').notNull(),
@@ -143,7 +143,7 @@ export const creditTransactions = sqliteTable('credit_transactions', {
   check('ck_credit_transactions_balance', sql`${table.balanceAfter} >= 0`),
 ]);
 
-export const subscriptionEvents = sqliteTable('subscription_events', {
+export const subscriptionEvents = pgTable('subscription_events', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
@@ -157,7 +157,7 @@ export const subscriptionEvents = sqliteTable('subscription_events', {
   index('idx_subscription_events_action_date').on(table.action, table.createdAt),
 ]);
 
-export const activationCodes = sqliteTable('activation_codes', {
+export const activationCodes = pgTable('activation_codes', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   codeHash: text('code_hash').notNull(),
@@ -171,7 +171,7 @@ export const activationCodes = sqliteTable('activation_codes', {
   index('idx_activation_codes_trainer_expiry').on(table.trainerId, table.expiresAt),
 ]);
 
-export const sessions = sqliteTable('sessions', {
+export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull(),
@@ -185,7 +185,7 @@ export const sessions = sqliteTable('sessions', {
   index('idx_sessions_user_expiry').on(table.userId, table.expiresAt),
 ]);
 
-export const passwordResetTokens = sqliteTable('password_reset_tokens', {
+export const passwordResetTokens = pgTable('password_reset_tokens', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull(),
@@ -197,7 +197,7 @@ export const passwordResetTokens = sqliteTable('password_reset_tokens', {
   index('idx_password_reset_user_expiry').on(table.userId, table.expiresAt),
 ]);
 
-export const encryptedApiCredentials = sqliteTable('encrypted_api_credentials', {
+export const encryptedApiCredentials = pgTable('encrypted_api_credentials', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   ciphertext: text('ciphertext').notNull(),
@@ -209,7 +209,7 @@ export const encryptedApiCredentials = sqliteTable('encrypted_api_credentials', 
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_api_credentials_trainer').on(table.trainerId)]);
 
-export const providerConnections = sqliteTable('provider_connections', {
+export const providerConnections = pgTable('provider_connections', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   provider: text('provider', { enum: ['microsoft', 'google', 'canva'] }).notNull(),
@@ -230,7 +230,7 @@ export const providerConnections = sqliteTable('provider_connections', {
   index('idx_provider_connections_owner_status').on(table.trainerId, table.status),
 ]);
 
-export const oauthAuthorizations = sqliteTable('oauth_authorizations', {
+export const oauthAuthorizations = pgTable('oauth_authorizations', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   provider: text('provider', { enum: ['microsoft', 'google', 'canva'] }).notNull(),
@@ -245,7 +245,7 @@ export const oauthAuthorizations = sqliteTable('oauth_authorizations', {
   index('idx_oauth_authorizations_owner_expiry').on(table.trainerId, table.expiresAt),
 ]);
 
-export const activities = sqliteTable('pedago_activities', {
+export const activities = pgTable('pedago_activities', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   type: text('type').notNull(), title: text('title').notNull(), theme: text('theme').notNull(), audience: text('audience'),
@@ -260,12 +260,12 @@ export const activities = sqliteTable('pedago_activities', {
   check('ck_activities_duration_positive', sql`${table.durationMinutes} > 0`), check('ck_activities_quality_range', sql`${table.qualityScore} BETWEEN 0 AND 100`),
 ]);
 
-export const activityContents = sqliteTable('activity_contents', {
+export const activityContents = pgTable('activity_contents', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
   version: integer('version').notNull().default(1), contentJson: text('content_json').notNull(), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_activity_content_version').on(table.activityId, table.version)]);
 
-export const mainFolders = sqliteTable('main_folders', {
+export const mainFolders = pgTable('main_folders', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
@@ -282,7 +282,7 @@ export const mainFolders = sqliteTable('main_folders', {
   index('idx_main_folders_owner_updated').on(table.trainerId, table.updatedAt),
 ]);
 
-export const courseFolders = sqliteTable('course_folders', {
+export const courseFolders = pgTable('course_folders', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   mainFolderId: text('main_folder_id').references(() => mainFolders.id, { onDelete: 'set null' }),
@@ -305,7 +305,7 @@ export const courseFolders = sqliteTable('course_folders', {
   check('ck_course_folders_duration_positive', sql`${table.durationMinutes} > 0`),
 ]);
 
-export const learningPaths = sqliteTable('learning_paths', {
+export const learningPaths = pgTable('learning_paths', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   trainingId: text('training_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
@@ -318,14 +318,14 @@ export const learningPaths = sqliteTable('learning_paths', {
   index('idx_learning_paths_owner_status').on(table.trainerId, table.status, table.updatedAt),
 ]);
 
-export const learningPathItems = sqliteTable('learning_path_items', {
+export const learningPathItems = pgTable('learning_path_items', {
   id: text('id').primaryKey(),
   pathId: text('path_id').notNull().references(() => learningPaths.id, { onDelete: 'cascade' }),
   activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(),
-  required: integer('required', { mode: 'boolean' }).notNull().default(true),
+  required: boolean('required').notNull().default(true),
   minScore: integer('min_score').notNull().default(0),
-  unlockAfterPrevious: integer('unlock_after_previous', { mode: 'boolean' }).notNull().default(true),
+  unlockAfterPrevious: boolean('unlock_after_previous').notNull().default(true),
   createdAt: integer('created_at').notNull().default(now),
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [
@@ -336,7 +336,7 @@ export const learningPathItems = sqliteTable('learning_path_items', {
   check('ck_learning_path_min_score', sql`${table.minScore} BETWEEN 0 AND 100`),
 ]);
 
-export const trainingShares = sqliteTable('training_shares', {
+export const trainingShares = pgTable('training_shares', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   trainingId: text('training_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
@@ -349,16 +349,16 @@ export const trainingShares = sqliteTable('training_shares', {
   liveActivityId: text('live_activity_id').references(() => activities.id, { onDelete: 'set null' }),
   identityMode: text('identity_mode', { enum: ['name', 'pseudonym', 'learner_code', 'anonymous'] }).notNull().default('name'),
   status: text('status', { enum: ['active', 'disabled'] }).notNull().default('active'),
-  sessionOpen: integer('session_open', { mode: 'boolean' }).notNull().default(true),
+  sessionOpen: boolean('session_open').notNull().default(true),
   startsAt: integer('starts_at'),
   expiresAt: integer('expires_at'),
   maxAccesses: integer('max_accesses'),
-  requireEmail: integer('require_email', { mode: 'boolean' }).notNull().default(false),
-  saveProgress: integer('save_progress', { mode: 'boolean' }).notNull().default(true),
-  saveTranscript: integer('save_transcript', { mode: 'boolean' }).notNull().default(false),
-  allowSubmission: integer('allow_submission', { mode: 'boolean' }).notNull().default(false),
-  showResult: integer('show_result', { mode: 'boolean' }).notNull().default(true),
-  oneTime: integer('one_time', { mode: 'boolean' }).notNull().default(false),
+  requireEmail: boolean('require_email').notNull().default(false),
+  saveProgress: boolean('save_progress').notNull().default(true),
+  saveTranscript: boolean('save_transcript').notNull().default(false),
+  allowSubmission: boolean('allow_submission').notNull().default(false),
+  showResult: boolean('show_result').notNull().default(true),
+  oneTime: boolean('one_time').notNull().default(false),
   accessCount: integer('access_count').notNull().default(0),
   createdAt: integer('created_at').notNull().default(now),
   updatedAt: integer('updated_at').notNull().default(now),
@@ -370,7 +370,7 @@ export const trainingShares = sqliteTable('training_shares', {
   check('ck_training_shares_access_count', sql`${table.accessCount} >= 0`),
 ]);
 
-export const learnerParticipants = sqliteTable('learner_participants', {
+export const learnerParticipants = pgTable('learner_participants', {
   id: text('id').primaryKey(),
   shareId: text('share_id').notNull().references(() => trainingShares.id, { onDelete: 'cascade' }),
   browserTokenHash: text('browser_token_hash').notNull(),
@@ -392,7 +392,7 @@ export const learnerParticipants = sqliteTable('learner_participants', {
   check('ck_learner_participants_progress', sql`${table.progressPercent} BETWEEN 0 AND 100`),
 ]);
 
-export const learnerProgress = sqliteTable('learner_progress', {
+export const learnerProgress = pgTable('learner_progress', {
   id: text('id').primaryKey(),
   participantId: text('participant_id').notNull().references(() => learnerParticipants.id, { onDelete: 'cascade' }),
   pathItemId: text('path_item_id').notNull().references(() => learningPathItems.id, { onDelete: 'cascade' }),
@@ -413,15 +413,15 @@ export const learnerProgress = sqliteTable('learner_progress', {
   check('ck_learner_progress_duration', sql`${table.durationSeconds} >= 0`),
 ]);
 
-export const publicAccessEvents = sqliteTable('public_access_events', {
+export const publicAccessEvents = pgTable('public_access_events', {
   id: text('id').primaryKey(),
   shareId: text('share_id').references(() => trainingShares.id, { onDelete: 'cascade' }),
   ipHash: text('ip_hash'),
-  success: integer('success', { mode: 'boolean' }).notNull().default(false),
+  success: boolean('success').notNull().default(false),
   createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_public_access_events_ip_date').on(table.ipHash, table.createdAt)]);
 
-export const courseFolderItems = sqliteTable('course_folder_items', {
+export const courseFolderItems = pgTable('course_folder_items', {
   id: text('id').primaryKey(),
   folderId: text('folder_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
   activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
@@ -434,22 +434,22 @@ export const courseFolderItems = sqliteTable('course_folder_items', {
   check('ck_course_folder_position', sql`${table.position} >= 0`),
 ]);
 
-export const questions = sqliteTable('questions', {
+export const questions = pgTable('questions', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(), contentJson: text('content_json').notNull(),
 }, (table) => [uniqueIndex('uq_questions_activity_position').on(table.activityId, table.position)]);
 
-export const lessons = sqliteTable('lessons', {
+export const lessons = pgTable('lessons', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }), contentJson: text('content_json').notNull(),
   createdAt: integer('created_at').notNull().default(now), updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_lessons_activity').on(table.activityId)]);
 
-export const sources = sqliteTable('sources', {
+export const sources = pgTable('sources', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
   title: text('title').notNull(), organization: text('organization'), url: text('url').notNull(), accessedAt: integer('accessed_at'), usedFor: text('used_for'),
 }, (table) => [index('idx_sources_activity').on(table.activityId)]);
 
-export const learnerResults = sqliteTable('learner_results', {
+export const learnerResults = pgTable('learner_results', {
   id: text('id').primaryKey(), activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   trainingId: text('training_id').references(() => courseFolders.id, { onDelete: 'set null' }), pathId: text('path_id').references(() => learningPaths.id, { onDelete: 'set null' }),
   shareId: text('share_id').references(() => trainingShares.id, { onDelete: 'set null' }), participantId: text('participant_id').references(() => learnerParticipants.id, { onDelete: 'set null' }),
@@ -458,7 +458,7 @@ export const learnerResults = sqliteTable('learner_results', {
   attempt: integer('attempt').notNull().default(1), selfEvaluation: text('self_evaluation'), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_results_owner_activity_date').on(table.trainerId, table.activityId, table.createdAt), index('idx_results_owner_training_date').on(table.trainerId, table.trainingId, table.createdAt), index('idx_results_share_participant').on(table.shareId, table.participantId, table.createdAt), check('ck_results_score', sql`${table.score} >= 0 AND ${table.maxScore} > 0`), check('ck_results_percentage', sql`${table.percentage} BETWEEN 0 AND 100`)]);
 
-export const learnerProfiles = sqliteTable('learner_profiles', {
+export const learnerProfiles = pgTable('learner_profiles', {
   userId: text('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
   organization: text('organization').notNull().default(''),
   groupName: text('group_name').notNull().default(''),
@@ -468,7 +468,7 @@ export const learnerProfiles = sqliteTable('learner_profiles', {
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [index('idx_learner_profiles_trainer_group').on(table.assignedTrainerId, table.groupName)]);
 
-export const learnerInvitations = sqliteTable('learner_invitations', {
+export const learnerInvitations = pgTable('learner_invitations', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
   firstName: text('first_name').notNull(),
@@ -489,7 +489,7 @@ export const learnerInvitations = sqliteTable('learner_invitations', {
   index('idx_learner_invitations_email_status').on(table.email, table.status, table.expiresAt),
 ]);
 
-export const learnerAssignments = sqliteTable('learner_assignments', {
+export const learnerAssignments = pgTable('learner_assignments', {
   id: text('id').primaryKey(),
   learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   trainingId: text('training_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
@@ -500,13 +500,13 @@ export const learnerAssignments = sqliteTable('learner_assignments', {
   status: text('status', { enum: ['active', 'paused', 'completed', 'removed'] }).notNull().default('active'),
   orderMode: text('order_mode', { enum: ['sequential', 'free'] }).notNull().default('sequential'),
   maxAttempts: integer('max_attempts').notNull().default(3),
-  resultVisible: integer('result_visible', { mode: 'boolean' }).notNull().default(true),
-  commentsVisible: integer('comments_visible', { mode: 'boolean' }).notNull().default(true),
-  uploadAllowed: integer('upload_allowed', { mode: 'boolean' }).notNull().default(true),
-  chatAllowed: integer('chat_allowed', { mode: 'boolean' }).notNull().default(true),
-  voiceAllowed: integer('voice_allowed', { mode: 'boolean' }).notNull().default(true),
+  resultVisible: boolean('result_visible').notNull().default(true),
+  commentsVisible: boolean('comments_visible').notNull().default(true),
+  uploadAllowed: boolean('upload_allowed').notNull().default(true),
+  chatAllowed: boolean('chat_allowed').notNull().default(true),
+  voiceAllowed: boolean('voice_allowed').notNull().default(true),
   voiceDurationSeconds: integer('voice_duration_seconds').notNull().default(600),
-  manualValidation: integer('manual_validation', { mode: 'boolean' }).notNull().default(false),
+  manualValidation: boolean('manual_validation').notNull().default(false),
   createdAt: integer('created_at').notNull().default(now),
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [
@@ -517,7 +517,7 @@ export const learnerAssignments = sqliteTable('learner_assignments', {
   check('ck_learner_assignment_voice_duration', sql`${table.voiceDurationSeconds} BETWEEN 60 AND 7200`),
 ]);
 
-export const learnerEvaluations = sqliteTable('learner_evaluations', {
+export const learnerEvaluations = pgTable('learner_evaluations', {
   id: text('id').primaryKey(),
   assignmentId: text('assignment_id').notNull().references(() => learnerAssignments.id, { onDelete: 'cascade' }),
   learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -537,7 +537,7 @@ export const learnerEvaluations = sqliteTable('learner_evaluations', {
   check('ck_learner_evaluation_scores', sql`(${table.score} IS NULL OR ${table.score} >= 0) AND (${table.maxScore} IS NULL OR ${table.maxScore} > 0)`),
 ]);
 
-export const learnerAccountProgress = sqliteTable('learner_account_progress', {
+export const learnerAccountProgress = pgTable('learner_account_progress', {
   id: text('id').primaryKey(),
   assignmentId: text('assignment_id').notNull().references(() => learnerAssignments.id, { onDelete: 'cascade' }),
   learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -558,7 +558,7 @@ export const learnerAccountProgress = sqliteTable('learner_account_progress', {
   check('ck_learner_account_progress_duration', sql`${table.durationSeconds} >= 0`),
 ]);
 
-export const learnerEvaluationHistory = sqliteTable('learner_evaluation_history', {
+export const learnerEvaluationHistory = pgTable('learner_evaluation_history', {
   id: text('id').primaryKey(),
   evaluationId: text('evaluation_id').notNull().references(() => learnerEvaluations.id, { onDelete: 'cascade' }),
   actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
@@ -568,7 +568,7 @@ export const learnerEvaluationHistory = sqliteTable('learner_evaluation_history'
   createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_learner_evaluation_history').on(table.evaluationId, table.createdAt)]);
 
-export const learnerSubmissions = sqliteTable('learner_submissions', {
+export const learnerSubmissions = pgTable('learner_submissions', {
   id: text('id').primaryKey(),
   assignmentId: text('assignment_id').notNull().references(() => learnerAssignments.id, { onDelete: 'cascade' }),
   learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -591,7 +591,7 @@ export const learnerSubmissions = sqliteTable('learner_submissions', {
   check('ck_learner_submissions_scores', sql`(${table.score} IS NULL OR ${table.score} >= 0) AND (${table.maxScore} IS NULL OR ${table.maxScore} > 0)`),
 ]);
 
-export const learnerOverallAssessments = sqliteTable('learner_overall_assessments', {
+export const learnerOverallAssessments = pgTable('learner_overall_assessments', {
   id: text('id').primaryKey(),
   learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   assessorId: text('assessor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -608,7 +608,7 @@ export const learnerOverallAssessments = sqliteTable('learner_overall_assessment
   check('ck_learner_overall_assessments_scores', sql`(${table.score} IS NULL OR ${table.score} >= 0) AND (${table.maxScore} IS NULL OR ${table.maxScore} > 0)`),
 ]);
 
-export const learnerMessages = sqliteTable('learner_messages', {
+export const learnerMessages = pgTable('learner_messages', {
   id: text('id').primaryKey(),
   learnerId: text('learner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -618,7 +618,7 @@ export const learnerMessages = sqliteTable('learner_messages', {
   createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_learner_messages_conversation').on(table.learnerId, table.trainerId, table.createdAt)]);
 
-export const learnerNotifications = sqliteTable('learner_notifications', {
+export const learnerNotifications = pgTable('learner_notifications', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   kind: text('kind').notNull(),
@@ -629,7 +629,7 @@ export const learnerNotifications = sqliteTable('learner_notifications', {
   createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_learner_notifications_user_read').on(table.userId, table.readAt, table.createdAt)]);
 
-export const knowledgeFolders = sqliteTable('knowledge_folders', {
+export const knowledgeFolders = pgTable('knowledge_folders', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
@@ -640,7 +640,7 @@ export const knowledgeFolders = sqliteTable('knowledge_folders', {
   index('idx_knowledge_folders_owner_updated').on(table.trainerId, table.updatedAt),
 ]);
 
-export const uploadedFiles = sqliteTable('uploaded_files', {
+export const uploadedFiles = pgTable('uploaded_files', {
   id: text('id').primaryKey(), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }), objectKey: text('object_key').notNull(),
   originalName: text('original_name').notNull(), mimeType: text('mime_type').notNull(), sizeBytes: integer('size_bytes').notNull(),
   knowledgeFolderId: text('knowledge_folder_id').references(() => knowledgeFolders.id, { onDelete: 'set null' }),
@@ -650,7 +650,7 @@ export const uploadedFiles = sqliteTable('uploaded_files', {
   analyzedAt: integer('analyzed_at'), createdAt: integer('created_at').notNull().default(now), updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [uniqueIndex('uq_uploaded_files_object_key').on(table.objectKey), index('idx_uploaded_files_owner_status').on(table.trainerId, table.status)]);
 
-export const documentPages = sqliteTable('document_pages', {
+export const documentPages = pgTable('document_pages', {
   id: text('id').primaryKey(),
   fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -668,7 +668,7 @@ export const documentPages = sqliteTable('document_pages', {
   readingQuality: text('reading_quality', { enum: ['good', 'partial', 'illegible'] }).notNull().default('good'),
   warningsJson: text('warnings_json').notNull().default('[]'),
   excludedInformationJson: text('excluded_information_json').notNull().default('[]'),
-  selected: integer('selected', { mode: 'boolean' }).notNull().default(true),
+  selected: boolean('selected').notNull().default(true),
   trainerNotes: text('trainer_notes').notNull().default(''),
   validatedAt: integer('validated_at'),
   createdAt: integer('created_at').notNull().default(now),
@@ -679,7 +679,7 @@ export const documentPages = sqliteTable('document_pages', {
   check('ck_document_pages_page_positive', sql`${table.pageNumber} > 0`),
 ]);
 
-export const documentChunks = sqliteTable('document_chunks', {
+export const documentChunks = pgTable('document_chunks', {
   id: text('id').primaryKey(),
   fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
   pageId: text('page_id').notNull().references(() => documentPages.id, { onDelete: 'cascade' }),
@@ -694,7 +694,7 @@ export const documentChunks = sqliteTable('document_chunks', {
   index('idx_document_chunks_owner_file').on(table.trainerId, table.fileId, table.pageId),
 ]);
 
-export const documentIndexes = sqliteTable('document_indexes', {
+export const documentIndexes = pgTable('document_indexes', {
   id: text('id').primaryKey(),
   fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -708,7 +708,7 @@ export const documentIndexes = sqliteTable('document_indexes', {
   index('idx_document_indexes_owner').on(table.trainerId, table.updatedAt),
 ]);
 
-export const generationJobs = sqliteTable('generation_jobs', {
+export const generationJobs = pgTable('generation_jobs', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   fileId: text('file_id').references(() => uploadedFiles.id, { onDelete: 'set null' }),
@@ -726,7 +726,7 @@ export const generationJobs = sqliteTable('generation_jobs', {
   check('ck_generation_jobs_progress_range', sql`${table.progress} BETWEEN 0 AND 100`),
 ]);
 
-export const scenarioProjects = sqliteTable('scenario_projects', {
+export const scenarioProjects = pgTable('scenario_projects', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   activityId: text('activity_id').references(() => activities.id, { onDelete: 'set null' }),
@@ -738,7 +738,7 @@ export const scenarioProjects = sqliteTable('scenario_projects', {
   updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [index('idx_scenario_projects_owner_status').on(table.trainerId, table.status, table.updatedAt)]);
 
-export const scenarioScenes = sqliteTable('scenario_scenes', {
+export const scenarioScenes = pgTable('scenario_scenes', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
@@ -754,7 +754,7 @@ export const scenarioScenes = sqliteTable('scenario_scenes', {
   index('idx_scenario_scenes_owner_activity').on(table.trainerId, table.activityId),
 ]);
 
-export const scenarioChoices = sqliteTable('scenario_choices', {
+export const scenarioChoices = pgTable('scenario_choices', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   sceneId: text('scene_id').notNull().references(() => scenarioScenes.id, { onDelete: 'cascade' }),
@@ -769,7 +769,7 @@ export const scenarioChoices = sqliteTable('scenario_choices', {
   check('ck_scenario_choices_score', sql`${table.score} BETWEEN 0 AND 2`),
 ]);
 
-export const documentActivityLinks = sqliteTable('document_activity_links', {
+export const documentActivityLinks = pgTable('document_activity_links', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
@@ -781,7 +781,7 @@ export const documentActivityLinks = sqliteTable('document_activity_links', {
   index('idx_document_activity_links_owner_activity').on(table.trainerId, table.activityId),
 ]);
 
-export const sourceCitations = sqliteTable('source_citations', {
+export const sourceCitations = pgTable('source_citations', {
   id: text('id').primaryKey(),
   trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   activityId: text('activity_id').notNull().references(() => activities.id, { onDelete: 'cascade' }),
@@ -796,7 +796,7 @@ export const sourceCitations = sqliteTable('source_citations', {
   index('idx_source_citations_file_page').on(table.fileId, table.pageNumber),
 ]);
 
-export const courseFolderFiles = sqliteTable('course_folder_files', {
+export const courseFolderFiles = pgTable('course_folder_files', {
   id: text('id').primaryKey(),
   folderId: text('folder_id').notNull().references(() => courseFolders.id, { onDelete: 'cascade' }),
   fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
@@ -809,7 +809,7 @@ export const courseFolderFiles = sqliteTable('course_folder_files', {
   check('ck_course_folder_file_position', sql`${table.position} >= 0`),
 ]);
 
-export const mainFolderFiles = sqliteTable('main_folder_files', {
+export const mainFolderFiles = pgTable('main_folder_files', {
   id: text('id').primaryKey(),
   mainFolderId: text('main_folder_id').notNull().references(() => mainFolders.id, { onDelete: 'cascade' }),
   fileId: text('file_id').notNull().references(() => uploadedFiles.id, { onDelete: 'cascade' }),
@@ -822,28 +822,28 @@ export const mainFolderFiles = sqliteTable('main_folder_files', {
   check('ck_main_folder_file_position', sql`${table.position} >= 0`),
 ]);
 
-export const externalResources = sqliteTable('external_resources', {
+export const externalResources = pgTable('external_resources', {
   id: text('id').primaryKey(), trainerId: text('trainer_id').notNull().references(() => users.id, { onDelete: 'cascade' }), name: text('name').notNull(), url: text('url').notNull(), category: text('category').notNull().default('Autre'),
   provider: text('provider').notNull().default('other'), resourceType: text('resource_type', { enum: ['link', 'video', 'presentation', 'document', 'embed', 'download'] }).notNull().default('link'),
   trainingId: text('training_id').references(() => courseFolders.id, { onDelete: 'cascade' }), activityId: text('activity_id').references(() => activities.id, { onDelete: 'cascade' }),
-  placement: text('placement', { enum: ['before', 'after', 'course', 'instructions', 'help'] }).notNull().default('course'), required: integer('required', { mode: 'boolean' }).notNull().default(false),
+  placement: text('placement', { enum: ['before', 'after', 'course', 'instructions', 'help'] }).notNull().default('course'), required: boolean('required').notNull().default(false),
   openMode: text('open_mode', { enum: ['site', 'new_tab', 'download'] }).notNull().default('new_tab'), embedUrl: text('embed_url'), thumbnailUrl: text('thumbnail_url'), externalId: text('external_id'), metadataJson: text('metadata_json').notNull().default('{}'),
   status: text('status', { enum: ['active', 'blocked'] }).notNull().default('active'), createdAt: integer('created_at').notNull().default(now), updatedAt: integer('updated_at').notNull().default(now),
 }, (table) => [index('idx_external_resources_owner_category').on(table.trainerId, table.category), index('idx_external_resources_training_activity').on(table.trainingId, table.activityId, table.createdAt)]);
 
-export const auditLogs = sqliteTable('audit_logs', {
+export const auditLogs = pgTable('audit_logs', {
   id: text('id').primaryKey(), actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }), action: text('action').notNull(), targetType: text('target_type').notNull(), targetId: text('target_id'), metadataJson: text('metadata_json').notNull().default('{}'), ipHash: text('ip_hash'), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_audit_logs_action_date').on(table.action, table.createdAt), index('idx_audit_logs_actor_date').on(table.actorId, table.createdAt)]);
 
-export const loginAttempts = sqliteTable('login_attempts', {
-  id: text('id').primaryKey(), emailHash: text('email_hash').notNull(), ipHash: text('ip_hash'), success: integer('success', { mode: 'boolean' }).notNull().default(false), createdAt: integer('created_at').notNull().default(now),
+export const loginAttempts = pgTable('login_attempts', {
+  id: text('id').primaryKey(), emailHash: text('email_hash').notNull(), ipHash: text('ip_hash'), success: boolean('success').notNull().default(false), createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_login_attempts_email_date').on(table.emailHash, table.createdAt)]);
 
-export const appSettings = sqliteTable('pedago_app_settings', {
+export const appSettings = pgTable('pedago_app_settings', {
   key: text('key').primaryKey(), valueJson: text('value_json').notNull(), updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }), updatedAt: integer('updated_at').notNull().default(now),
 });
 
-export const helpArticles = sqliteTable('help_articles', {
+export const helpArticles = pgTable('help_articles', {
   id: text('id').primaryKey(),
   slug: text('slug').notNull(),
   title: text('title').notNull(),
@@ -854,7 +854,7 @@ export const helpArticles = sqliteTable('help_articles', {
   feature: text('feature').notNull().default('general'),
   plansJson: text('plans_json').notNull().default('[]'),
   mediaUrl: text('media_url').notNull().default(''),
-  published: integer('published', { mode: 'boolean' }).notNull().default(false),
+  published: boolean('published').notNull().default(false),
   createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: integer('created_at').notNull().default(now),
@@ -864,7 +864,7 @@ export const helpArticles = sqliteTable('help_articles', {
   index('idx_help_articles_published_feature').on(table.published, table.feature, table.updatedAt),
 ]);
 
-export const supportTickets = sqliteTable('support_tickets', {
+export const supportTickets = pgTable('support_tickets', {
   id: text('id').primaryKey(),
   reference: text('reference').notNull(),
   requesterId: text('requester_id').references(() => users.id, { onDelete: 'set null' }),
@@ -894,17 +894,17 @@ export const supportTickets = sqliteTable('support_tickets', {
   index('idx_support_tickets_status_priority').on(table.status, table.priority, table.updatedAt),
 ]);
 
-export const supportMessages = sqliteTable('support_messages', {
+export const supportMessages = pgTable('support_messages', {
   id: text('id').primaryKey(),
   ticketId: text('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
   authorId: text('author_id').references(() => users.id, { onDelete: 'set null' }),
   authorRole: text('author_role', { enum: ['requester', 'support'] }).notNull(),
   message: text('message').notNull(),
-  internal: integer('internal', { mode: 'boolean' }).notNull().default(false),
+  internal: boolean('internal').notNull().default(false),
   createdAt: integer('created_at').notNull().default(now),
 }, (table) => [index('idx_support_messages_ticket_date').on(table.ticketId, table.createdAt)]);
 
-export const supportAttachments = sqliteTable('support_attachments', {
+export const supportAttachments = pgTable('support_attachments', {
   id: text('id').primaryKey(),
   ticketId: text('ticket_id').notNull().references(() => supportTickets.id, { onDelete: 'cascade' }),
   objectKey: text('object_key').notNull(),
@@ -918,7 +918,7 @@ export const supportAttachments = sqliteTable('support_attachments', {
   check('ck_support_attachments_size', sql`${table.sizeBytes} BETWEEN 1 AND 5242880`),
 ]);
 
-export const salesLeads = sqliteTable('sales_leads', {
+export const salesLeads = pgTable('sales_leads', {
   id: text('id').primaryKey(),
   reference: text('reference').notNull(),
   firstName: text('first_name').notNull(),
@@ -930,9 +930,9 @@ export const salesLeads = sqliteTable('sales_leads', {
   learnerCount: integer('learner_count').notNull().default(0),
   primaryNeed: text('primary_need').notNull(),
   planInterest: text('plan_interest', { enum: ['essential', 'coach', 'intensive', 'undecided'] }).notNull().default('undecided'),
-  wantsDemo: integer('wants_demo', { mode: 'boolean' }).notNull().default(false),
-  wantsQuote: integer('wants_quote', { mode: 'boolean' }).notNull().default(false),
-  wantsCallback: integer('wants_callback', { mode: 'boolean' }).notNull().default(false),
+  wantsDemo: boolean('wants_demo').notNull().default(false),
+  wantsQuote: boolean('wants_quote').notNull().default(false),
+  wantsCallback: boolean('wants_callback').notNull().default(false),
   preferredTime: text('preferred_time').notNull().default(''),
   message: text('message').notNull().default(''),
   status: text('status', { enum: ['new', 'callback', 'demo', 'quote', 'proposal', 'follow_up', 'accepted', 'refused'] }).notNull().default('new'),
@@ -945,7 +945,7 @@ export const salesLeads = sqliteTable('sales_leads', {
   index('idx_sales_leads_status_date').on(table.status, table.updatedAt),
 ]);
 
-export const publicSubmissionEvents = sqliteTable('public_submission_events', {
+export const publicSubmissionEvents = pgTable('public_submission_events', {
   id: text('id').primaryKey(),
   fingerprint: text('fingerprint').notNull(),
   kind: text('kind', { enum: ['support', 'sales'] }).notNull(),
