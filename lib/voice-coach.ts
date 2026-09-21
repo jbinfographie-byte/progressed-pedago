@@ -35,6 +35,9 @@ export type VoiceCoachContent = {
 };
 
 const text=(value:unknown,fallback='',maximum=4_000)=>typeof value==='string'&&value.trim()?value.trim().slice(0,maximum):fallback;
+const editableText=(source:Record<string,unknown>,key:string,fallback='',maximum=4_000)=>Object.prototype.hasOwnProperty.call(source,key)
+  ? (typeof source[key]==='string'?source[key].trim().slice(0,maximum):'')
+  : fallback;
 const list=(value:unknown,maximum=40)=>Array.isArray(value)?[...new Set(value.map(String).map((item)=>item.trim().slice(0,500)).filter(Boolean))].slice(0,maximum):[];
 const enumList=<T extends string>(value:unknown,allowed:readonly T[],fallback:T[])=>Array.isArray(value)?[...new Set(value.map(String).filter((item):item is T=>allowed.includes(item as T)))].slice(0,allowed.length):fallback;
 
@@ -68,10 +71,10 @@ export function normalizeVoiceCoachContent(value:unknown):VoiceCoachContent {
   const kinds=enumList(source.activityKinds,VOICE_ACTIVITY_KINDS.map(([id])=>id),[inferActivityKind(mode)]);
   const sourceDocuments=Array.isArray(source.sourceDocuments)?source.sourceDocuments.flatMap((entry)=>{const row=entry&&typeof entry==='object'?entry as Record<string,unknown>:{};const id=text(row.id,'',100);return id?[{id,name:text(row.name,'Document pédagogique',200),pages:Array.isArray(row.pages)?row.pages.map(Number).filter((page)=>Number.isInteger(page)&&page>0).slice(0,250):[]}]:[];}).slice(0,20):[];
   return {
-    learningLanguage:text(source.learningLanguage,'français'),explanationLanguage:text(source.explanationLanguage,'français'),cefrLevel:text(source.cefrLevel,'A1'),topic:text(source.topic,'Situation professionnelle'),professionalTheme:text(source.professionalTheme,text(source.topic,'Formation professionnelle'),200),audience:text(source.audience,'Adultes en formation professionnelle',300),skills:list(source.skills,20),
+    learningLanguage:editableText(source,'learningLanguage','français'),explanationLanguage:editableText(source,'explanationLanguage','français'),cefrLevel:editableText(source,'cefrLevel','A1'),topic:editableText(source,'topic','Situation professionnelle'),professionalTheme:editableText(source,'professionalTheme',text(source.topic,'Formation professionnelle'),200),audience:editableText(source,'audience','Adultes en formation professionnelle',300),skills:list(source.skills,20),
     vocabulary:list(source.vocabulary),phrases:list(source.phrases),objectives:list(source.objectives),lessonText:text(source.lessonText,'',24_000),coachScript:text(source.coachScript,'',8_000),customQuestions:list(source.customQuestions),repeatItems:list(source.repeatItems),
     activityKinds:kinds,listeningFormats:enumList(source.listeningFormats,VOICE_LISTENING_FORMATS.map(([id])=>id),['oral','reformulation']),steps:Array.isArray(source.steps)?source.steps.map(normalizeStep).filter((item):item is VoiceCoachStep=>Boolean(item)).slice(0,40):[],
-    aiRole:text(source.aiRole,'Interlocuteur professionnel',200),learnerRole:text(source.learnerRole,'Professionnel en situation',200),professionalContext:text(source.professionalContext,'',4_000),mission:text(source.mission,'',2_000),difficulty,unexpectedEvents:list(source.unexpectedEvents,20),evaluationCriteria:list(source.evaluationCriteria,20),randomPools:normalizeRandomPools(source.randomPools),sourceDocuments,maxAttempts:Math.min(10,Math.max(1,Math.round(Number(source.maxAttempts)||3))),allowHints:source.allowHints!==false,
+    aiRole:editableText(source,'aiRole','Interlocuteur professionnel',200),learnerRole:editableText(source,'learnerRole','Professionnel en situation',200),professionalContext:text(source.professionalContext,'',4_000),mission:text(source.mission,'',2_000),difficulty,unexpectedEvents:list(source.unexpectedEvents,20),evaluationCriteria:list(source.evaluationCriteria,20),randomPools:normalizeRandomPools(source.randomPools),sourceDocuments,maxAttempts:Math.min(10,Math.max(1,Math.round(Number(source.maxAttempts)||3))),allowHints:source.allowHints!==false,
     speed,correctionLevel:correction,conversationMode:mode,voice:['marin','cedar','coral','sage','shimmer','verse','alloy','ash','ballad','echo'].includes(String(source.voice))?String(source.voice):'marin',showText:source.showText!==false,allowTranslation:source.allowTranslation!==false,transcriptMode:transcript,maxDurationMinutes:Math.min(60,Math.max(2,Math.round(Number(source.maxDurationMinutes)||10))),trainerPrompt:text(source.trainerPrompt,'',4_000),
   };
 }

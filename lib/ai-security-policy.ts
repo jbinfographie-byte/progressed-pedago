@@ -10,9 +10,9 @@ export type AiSecuritySettings = typeof AI_SECURITY_DEFAULTS;
 export type OpenAiCredentialSource = 'personal' | 'platform' | 'administrator';
 
 export function chooseOpenAiCredentialSource(input: { hasPersonal: boolean; hasPlatform: boolean; hasAdministrator: boolean }): OpenAiCredentialSource | null {
-  if (input.hasPersonal) return 'personal';
   if (input.hasPlatform) return 'platform';
   if (input.hasAdministrator) return 'administrator';
+  if (input.hasPersonal) return 'personal';
   return null;
 }
 
