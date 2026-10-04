@@ -39,6 +39,7 @@ yarn-error.log*
 .env
 .env.*
 !.env.example
+!.env.optional.example
 .dev.vars
 
 # local databases, backups and private user content

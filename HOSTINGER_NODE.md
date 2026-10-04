@@ -23,6 +23,11 @@ Ajouter dans **Variables d’environnement** :
 - `NEXT_PUBLIC_SITE_URL` : adresse publique finale du site ;
 - les variables facultatives Resend, Google, Microsoft et Canva seulement si ces connexions sont utilisées.
 
+Le fichier `.env.example` ne contient que les 12 variables nécessaires au
+déploiement complet. Les huit variables facultatives sont documentées dans
+`.env.optional.example` afin que l'assistant de déploiement Hostinger ne bloque
+plus le bouton **Déployer** en les réclamant sans nécessité.
+
 ## 3. Initialiser la base
 
 Depuis un terminal disposant des mêmes variables :
@@ -41,7 +46,11 @@ La première migration crée les 63 tables de l’application. Les tables publiq
 - Node.js : `22.x` ;
 - Gestionnaire : `npm` ;
 - Commande de compilation : `npm run build` ;
-- Commande de démarrage : `npm run start`.
+- Répertoire de sortie : `dist` ;
+- Commande de démarrage : `npm run start` ;
+- Fichier d'entrée : `server.mjs` si Hostinger le demande. Ce fichier est
+  généré automatiquement dans `dist` pendant la compilation et lance le même
+  serveur de production vinext que `npm run start`.
 
 `vinext start` écoute automatiquement sur `0.0.0.0` et utilise le port fourni par `process.env.PORT`.
 
